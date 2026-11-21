@@ -237,6 +237,23 @@ def unsupported_primitives(jaxpr, found=None):
     return found
 
 
+def _eval_eqn(eqn, values, bflags, batch_size):
+    """Evaluate one equation on (possibly batched) NumPy values; returns (outputs, flags)."""
+    name = str(eqn.primitive)
+    if name in _CALL_PRIMITIVES:
+        sub, sub_consts = _sub_jaxpr(eqn)
+        n_in = len(sub.invars)
+        return eval_jaxpr_batched(sub, sub_consts, values[len(values) - n_in:],
+                                  bflags[len(bflags) - n_in:], batch_size)
+    if name in _STRUCTURAL:
+        out, flag = _batched_structural(name, values, eqn.params, bflags, batch_size)
+        outputs = out if eqn.primitive.multiple_results else [out]
+        return [np.asarray(o) for o in outputs], [flag] * len(outputs)
+    out = _PRIMITIVES[name](*values, **eqn.params)
+    outputs = out if eqn.primitive.multiple_results else [out]
+    return [np.asarray(o) for o in outputs], [any(bflags)] * len(outputs)
+
+
 def eval_jaxpr_batched(jaxpr, consts, args, batched, batch_size):
     """Evaluate an *unbatched* jaxpr on inputs that may carry a leading batch axis.
 
@@ -258,22 +275,9 @@ def eval_jaxpr_batched(jaxpr, consts, args, batched, batch_size):
         env[v], flags[v] = x, b
     for eqn in jaxpr.eqns:
         values, bflags = zip(*[read(v) for v in eqn.invars]) if eqn.invars else ((), ())
-        name = str(eqn.primitive)
-        if name in _CALL_PRIMITIVES:
-            sub, sub_consts = _sub_jaxpr(eqn)
-            n_in = len(sub.invars)
-            outputs, out_flags = eval_jaxpr_batched(sub, sub_consts, values[len(values) - n_in:],
-                                                    bflags[len(bflags) - n_in:], batch_size)
-        elif name in _STRUCTURAL:
-            out, flag = _batched_structural(name, values, eqn.params, bflags, batch_size)
-            outputs, out_flags = (out if eqn.primitive.multiple_results else [out]), None
-            out_flags = [flag] * len(outputs)
-        else:
-            out = _PRIMITIVES[name](*values, **eqn.params)
-            outputs = out if eqn.primitive.multiple_results else [out]
-            out_flags = [any(bflags)] * len(outputs)
+        outputs, out_flags = _eval_eqn(eqn, values, bflags, batch_size)
         for v, x, b in zip(eqn.outvars, outputs, out_flags):
-            env[v], flags[v] = np.asarray(x), b
+            env[v], flags[v] = x, b
     results = [read(v) for v in jaxpr.outvars]
     return [r[0] for r in results], [r[1] for r in results]
 
@@ -331,6 +335,217 @@ class TracedFunction:
         return self._run(self.backward, x, np.asarray(ct))[1]
 
 
+
+
+class _Unsupported(Exception):
+    pass
+
+
+def _sum_to(ct, shape):
+    """Sum a cotangent down to `shape` (undo NumPy broadcasting)."""
+    ct = np.asarray(ct)
+    while ct.ndim > len(shape):
+        ct = ct.sum(axis=0)
+    for axis, (have, want) in enumerate(zip(ct.shape, shape)):
+        if want == 1 and have != 1:
+            ct = ct.sum(axis=axis, keepdims=True)
+    return np.broadcast_to(ct, shape)
+
+
+def _transpose_eqn(eqn, cts_out, primal, tangent_in, batch):
+    """Transpose one *linear* (tangent) equation of a JVP jaxpr, JAX complex convention.
+
+    Returns {invar index: cotangent} for the tangent inputs. Shapes carry a leading batch axis.
+    """
+    name = str(eqn.primitive)
+    p = eqn.params
+    shapes = [tuple(v.aval.shape) for v in eqn.invars]
+    full = lambda i: (batch, *shapes[i])
+    tangent_idx = [i for i, t in enumerate(tangent_in) if t]
+    if name == "split":
+        pieces = [np.zeros((batch, *v.aval.shape), np.dtype(v.aval.dtype)) if c is None else c
+                  for v, c in zip(eqn.outvars, cts_out)]
+        return {0: np.concatenate(pieces, axis=p["axis"] + 1)}
+    ct = cts_out[0]
+    if name in ("add", "add_any"):
+        return {i: _sum_to(ct, full(i)) for i in tangent_idx}
+    if name == "sub":
+        return {i: _sum_to(ct if i == 0 else -ct, full(i)) for i in tangent_idx}
+    if name == "neg":
+        return {0: -ct}
+    if name in ("copy", "copy_p"):
+        return {0: ct}
+    if name == "mul":
+        if len(tangent_idx) != 1:
+            raise _Unsupported("nonlinear mul")
+        i = tangent_idx[0]
+        return {i: _sum_to(ct * primal(1 - i), full(i))}
+    if name == "div":
+        if tangent_idx != [0]:
+            raise _Unsupported("nonlinear div")
+        return {0: _sum_to(ct / primal(1), full(0))}
+    if name == "convert_element_type":
+        src = np.dtype(eqn.invars[0].aval.dtype)
+        if np.issubdtype(src, np.complexfloating):
+            return {0: np.asarray(ct).astype(src)}
+        return {0: np.real(ct).astype(src)}
+    if name == "conj":
+        src = np.dtype(eqn.invars[0].aval.dtype)
+        return {0: np.conj(ct) if np.issubdtype(src, np.complexfloating) else np.real(ct).astype(src)}
+    if name == "real":
+        return {0: np.asarray(ct).astype(np.complex128)}
+    if name == "imag":
+        return {0: -1j * np.asarray(ct)}
+    if name == "complex":
+        out = {}
+        if tangent_in[0]:
+            out[0] = _sum_to(np.real(ct), full(0))
+        if tangent_in[1]:
+            out[1] = _sum_to(-np.imag(ct), full(1))
+        return out
+    if name == "select_n":
+        if tangent_in[0]:
+            raise _Unsupported("tangent predicate")
+        which = np.asarray(primal(0))
+        which = which.astype(np.int32) if which.dtype == np.bool_ else which
+        return {i: _sum_to(np.where(which == i - 1, ct, 0), full(i)) for i in tangent_idx}
+    if name == "broadcast_in_dim":
+        dims = p["broadcast_dimensions"]
+        out_shape = p["shape"]
+        summed = tuple(k + 1 for k in range(len(out_shape)) if k not in dims)
+        r = np.sum(ct, axis=summed) if summed else ct
+        for k, d in enumerate(dims):
+            if shapes[0][k] == 1 and out_shape[d] != 1:
+                r = np.sum(r, axis=k + 1, keepdims=True)
+        return {0: np.reshape(r, full(0))}
+    if name in ("reshape", "squeeze", "expand_dims"):
+        if name == "reshape" and p.get("dimensions") is not None:
+            raise _Unsupported("reshape dimensions")
+        return {0: np.reshape(ct, full(0))}
+    if name == "slice":
+        st = p.get("strides") or (1,) * len(p["start_indices"])
+        z = np.zeros(full(0), np.asarray(ct).dtype)
+        z[(slice(None), *[slice(a, b, c) for a, b, c in zip(p["start_indices"], p["limit_indices"], st)])] = ct
+        return {0: z}
+    if name == "pad":
+        if tangent_in[1]:
+            raise _Unsupported("tangent padding value")
+        r = np.asarray(ct)
+        for k, (lo, hi, interior) in enumerate(p["padding_config"]):
+            n_in = shapes[0][k]
+            pos = lo + np.arange(n_in) * (interior + 1)
+            n_out = r.shape[k + 1]
+            valid = (pos >= 0) & (pos < n_out)
+            r = np.take(r, np.clip(pos, 0, max(n_out - 1, 0)), axis=k + 1)
+            mask_shape = [1] * r.ndim
+            mask_shape[k + 1] = n_in
+            r = r * valid.reshape(mask_shape)
+        return {0: r}
+    if name == "concatenate":
+        axis = p["dimension"] + 1
+        bounds = np.cumsum([s[p["dimension"]] for s in shapes])[:-1]
+        pieces = np.split(ct, bounds, axis=axis)
+        return {i: pieces[i] for i in tangent_idx}
+    if name == "reduce_sum":
+        axes = tuple(sorted(a + 1 for a in p["axes"]))
+        return {0: np.broadcast_to(np.expand_dims(ct, axes), full(0))}
+    if name == "transpose":
+        inverse = np.argsort(p["permutation"])
+        return {0: np.transpose(ct, (0, *[int(q) + 1 for q in inverse]))}
+    raise _Unsupported(name)
+
+
+_TRANSPOSABLE = {"add", "add_any", "sub", "neg", "copy", "copy_p", "mul", "div", "convert_element_type",
+                 "conj", "real", "imag", "complex", "select_n", "broadcast_in_dim", "reshape", "squeeze",
+                 "expand_dims", "slice", "pad", "concatenate", "split", "reduce_sum", "transpose"}
+
+
+class JvpTransposedFunction:
+    """Per-example function with its VJP obtained by transposing JAX's JVP program.
+
+    Tracing `jax.jvp` is ~3x cheaper than tracing `jax.vjp` (no partial evaluation
+    or JAX-side transposition). Derivative formulas still come from JAX's JVP
+    rules; only the linear tangent equations are transposed here, which needs
+    rules for linear primitives only. Raises _Unsupported at construction if the
+    tangent program contains anything else (caller falls back to TracedFunction).
+    """
+
+    def __init__(self, function, in_shape, dtype):
+        example = jax.ShapeDtypeStruct(in_shape, dtype)
+        closed = jax.make_jaxpr(lambda x, t: jax.jvp(function, (x,), (t,)))(example, example)
+        jaxpr = closed.jaxpr
+        self.consts = closed.consts
+        self.in_shape, self.in_dtype = tuple(in_shape), np.dtype(dtype)
+        y, ydot = jaxpr.outvars
+        self.out_shape, self.out_dtype = tuple(y.aval.shape), np.dtype(y.aval.dtype)
+        x_var, t_var = jaxpr.invars
+        tangent = {t_var}
+        self.primal_eqns, self.tangent_eqns = [], []
+        for eqn in jaxpr.eqns:
+            flags = [(not isinstance(v, jcore.Literal)) and v in tangent for v in eqn.invars]
+            if any(flags):
+                name = str(eqn.primitive)
+                if name not in _TRANSPOSABLE:
+                    raise _Unsupported(name)
+                self.tangent_eqns.append((eqn, flags))
+                tangent.update(eqn.outvars)
+            else:
+                self.primal_eqns.append(eqn)
+        if (not isinstance(y, jcore.Literal)) and y in tangent:
+            raise _Unsupported("primal output depends on tangent")
+        self.jaxpr, self.x_var, self.t_var, self.y_var, self.ydot_var = jaxpr, x_var, t_var, y, ydot
+        self.ydot_is_tangent = (not isinstance(ydot, jcore.Literal)) and ydot in tangent
+        primal_only = jcore.Jaxpr(jaxpr.constvars, [x_var], [y], self.primal_eqns)
+        self.unsupported = unsupported_primitives(primal_only)
+
+    def _primal_env(self, x):
+        x = np.asarray(x)
+        batch = x.shape[0]
+        env, flags = {}, {}
+        for v, c in zip(self.jaxpr.constvars, self.consts):
+            env[v], flags[v] = np.asarray(c), False
+        env[self.x_var], flags[self.x_var] = x, True
+        for eqn in self.primal_eqns:
+            values = [v.val if isinstance(v, jcore.Literal) else env[v] for v in eqn.invars]
+            bflags = [False if isinstance(v, jcore.Literal) else flags[v] for v in eqn.invars]
+            outs, oflags = _eval_eqn(eqn, values, bflags, batch)
+            for v, o, f in zip(eqn.outvars, outs, oflags):
+                env[v], flags[v] = o, f
+        return env, flags, batch
+
+    def __call__(self, x):
+        env, flags, batch = self._primal_env(x)
+        y = self.y_var.val if isinstance(self.y_var, jcore.Literal) else env[self.y_var]
+        f = False if isinstance(self.y_var, jcore.Literal) else flags[self.y_var]
+        return y if f else np.broadcast_to(y, (batch, *np.shape(y)))
+
+    def vjp(self, x, ct):
+        env, _, batch = self._primal_env(x)
+        zero = np.zeros((batch, *self.in_shape), np.complex128 if np.issubdtype(self.in_dtype, np.complexfloating) else self.in_dtype)
+        if not self.ydot_is_tangent:
+            return zero
+        cts = {self.ydot_var: np.asarray(ct)}
+        for eqn, tflags in reversed(self.tangent_eqns):
+            outs = [cts.pop(v, None) for v in eqn.outvars]
+            if all(o is None for o in outs):
+                continue
+            primal = lambda i, eqn=eqn: (eqn.invars[i].val if isinstance(eqn.invars[i], jcore.Literal)
+                                         else env[eqn.invars[i]])
+            for i, c in _transpose_eqn(eqn, outs, primal, tflags, batch).items():
+                v = eqn.invars[i]
+                cts[v] = c if v not in cts else cts[v] + c
+        result = cts.get(self.t_var)
+        return zero if result is None else np.asarray(result).astype(zero.dtype).reshape(zero.shape)
+
+
+def trace_function(function, in_shape, dtype):
+    """JVP-transposed tracing when possible (cheaper), else forward+VJP tracing."""
+    try:
+        return JvpTransposedFunction(function, in_shape, dtype)
+    except _Unsupported:
+        return TracedFunction(function, in_shape, dtype)
+
+
 # ======================================================================
 # Static plan (shapes and traced functions), built at JAX trace time
 # ======================================================================
@@ -346,13 +561,13 @@ class Plan:
             for key in groups:
                 fid = int(key[1:])
                 if fid not in self.traced:
-                    t = TracedFunction(FUNCTIONS[fid], (7,), jnp.complex128)
+                    t = trace_function(FUNCTIONS[fid], (7,), jnp.complex128)
                     self.traced[fid] = t
                     self.unsupported |= t.unsupported
         self.links = []
         if n_links:
             for function in LINKING_FUNCTIONS:
-                t = TracedFunction(function, (), jnp.complex128)
+                t = trace_function(function, (), jnp.complex128)
                 self.links.append(t)
                 self.unsupported |= t.unsupported
 
