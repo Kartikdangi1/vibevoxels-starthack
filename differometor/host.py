@@ -24,6 +24,8 @@ z = x + iy, ct(z) = dL/dx - i dL/dy. Hence for y = a*z: ct(z) += a*ct(y);
 y = conj(z): ct(z) += conj(ct(y)); y = Re(z): ct(z) += ct(y).
 """
 
+import os
+import sys
 from collections import OrderedDict
 from functools import partial
 
@@ -31,9 +33,6 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 from jax.extend import core as jcore
-
-import scipy.sparse as sp
-import scipy.sparse.linalg as spl
 
 from differometor.components import FUNCTIONS, UNIT_VACUUM, H_PLANCK, F0
 from differometor.build import LINKING_FUNCTIONS
@@ -425,6 +424,81 @@ def _assemble_backward(plan, ct_values, groups, saved, parameters_shape):
     return ct_parameters
 
 
+_SUPERLU = []
+
+
+def _superlu():
+    """SciPy's SuperLU extension module (`scipy.sparse.linalg._dsolve._superlu`).
+
+    Importing `scipy.sparse.linalg` costs ~0.1 s, almost all of it unrelated to
+    SuperLU. The compiled extension only needs NumPy, so it is loaded directly and
+    registered under its real name (a later `import scipy.sparse.linalg` reuses it).
+    Falls back to the regular import if the layout differs.
+    """
+    if not _SUPERLU:
+        name = "scipy.sparse.linalg._dsolve._superlu"
+        module = sys.modules.get(name)
+        if module is None:
+            try:
+                import glob
+                import importlib.util
+                scipy_dir = os.path.dirname(importlib.util.find_spec("scipy").origin)
+                (path,) = glob.glob(os.path.join(scipy_dir, "sparse", "linalg", "_dsolve", "_superlu*.so")) or \
+                    glob.glob(os.path.join(scipy_dir, "sparse", "linalg", "_dsolve", "_superlu*.pyd"))
+                spec = importlib.util.spec_from_file_location(name, path)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                sys.modules[name] = module
+            except Exception:
+                from scipy.sparse.linalg._dsolve import _superlu as module
+        _SUPERLU.append(module)
+    return _SUPERLU[0]
+
+
+def _csc_construct(*args, **kwargs):  # only used if SuperLU.L / .U are requested
+    from scipy.sparse import csc_array
+    return csc_array(*args, **kwargs)
+
+
+class SparsePattern:
+    """Fixed sparsity pattern (rows, cols) of an n x n matrix in sorted CSC order."""
+
+    def __init__(self, rows, cols, n):
+        rows = np.asarray(rows, np.int64)
+        cols = np.asarray(cols, np.int64)
+        self.n, self.rows, self.cols = n, rows, cols
+        self.order = np.lexsort((rows, cols))  # by column, then row (canonical CSC)
+        self.indices = np.ascontiguousarray(rows[self.order], dtype=np.intc)
+        self.indptr = np.ascontiguousarray(
+            np.concatenate([[0], np.cumsum(np.bincount(cols, minlength=n))]), dtype=np.intc)
+
+    def matvec(self, values, x, trans):
+        """A x (trans 'N'), A^T x ('T') or A^H x ('H') for x of shape (n,) or (n, k)."""
+        if trans == "N":
+            out_index, in_index, v = self.rows, self.cols, values
+        else:
+            out_index, in_index = self.cols, self.rows
+            v = values if trans == "T" else np.conj(values)
+        if x.ndim == 1:
+            terms = v * x[in_index]
+            return (np.bincount(out_index, terms.real, self.n)
+                    + 1j * np.bincount(out_index, terms.imag, self.n))
+        return np.stack([self.matvec(values, x[:, k], trans) for k in range(x.shape[1])], axis=1)
+
+
+_PATTERNS = {}
+
+
+def _pattern(rows, cols, n):
+    rows = np.asarray(rows)
+    cols = np.asarray(cols)
+    key = (n, rows.shape[0], hash(rows.tobytes()), hash(cols.tobytes()))
+    pattern = _PATTERNS.get(key)
+    if pattern is None:
+        pattern = _PATTERNS[key] = SparsePattern(rows, cols, n)
+    return pattern
+
+
 class RefinedLU:
     """SuperLU factorisation of a sparse A with one step of iterative refinement.
 
@@ -435,22 +509,21 @@ class RefinedLU:
     fixed-precision refinement (residual computed with the sparse matrix)
     restores componentwise accuracy. Validated against 60-digit references.
     A singular matrix yields NaN (as the dense solver would), not an exception.
+    Factorisation options are SuperLU's defaults, exactly as `scipy.sparse.linalg.splu`.
     """
 
     def __init__(self, values, rows, cols, n, refine=1):
-        self.matrix = sp.csc_matrix((values, (rows, cols)), shape=(n, n))
+        self.pattern = _pattern(rows, cols, n)
+        self.values = np.asarray(values, dtype=np.complex128)
         self.refine = refine
+        data = np.ascontiguousarray(self.values[self.pattern.order])
         try:
-            self.lu = spl.splu(self.matrix)
+            self.lu = _superlu().gstrf(
+                n, data.shape[0], data, self.pattern.indices, self.pattern.indptr,
+                csc_construct_func=_csc_construct, ilu=False,
+                options=dict(DiagPivotThresh=None, ColPerm=None, PanelSize=None, Relax=None))
         except RuntimeError:  # exactly singular
             self.lu = None
-
-    def _apply(self, x, trans):
-        if trans == "N":
-            return self.matrix @ x
-        if trans == "T":
-            return self.matrix.T @ x
-        return np.conj(self.matrix.T @ np.conj(x))  # A^H x
 
     def solve(self, b, trans="N"):
         b = np.asarray(b, dtype=np.complex128)
@@ -458,7 +531,7 @@ class RefinedLU:
             return np.full(b.shape, np.nan + 1j * np.nan)
         x = self.lu.solve(b, trans=trans)
         for _ in range(self.refine):
-            x = x + self.lu.solve(b - self._apply(x, trans), trans=trans)
+            x = x + self.lu.solve(b - self.pattern.matvec(self.values, x, trans), trans=trans)
         return x
 
 

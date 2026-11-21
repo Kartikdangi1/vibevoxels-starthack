@@ -22,8 +22,6 @@ import jax
 from time import time
 import jax.numpy as jnp
 import numpy as np
-import scipy.sparse as sp
-import scipy.sparse.linalg as spl
 from jax import lax, vmap, jit
 
 from differometor.setups import Setup
