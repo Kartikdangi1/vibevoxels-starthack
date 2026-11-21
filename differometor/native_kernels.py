@@ -324,6 +324,12 @@ class NativeFunction:
             y[:, k] = o
         return y
 
+    def forward_with_cache(self, x):
+        return self(x), x
+
+    def vjp_from_cache(self, cache, ct):
+        return self.vjp(cache, ct)
+
     def vjp(self, x, ct):
         x, cols = self._columns(x)
         ct = np.asarray(ct, dtype=np.complex128)
@@ -345,11 +351,11 @@ class NativeFunction:
 def native_function(function):
     """NativeFunction for an unmodified built-in component function, else None.
 
-    DIFFEROMETOR_NATIVE=none disables the kernels (JAX tracing for everything);
+    DIFFEROMETOR_KERNELS=none disables the kernels (JAX tracing for everything);
     a comma-separated list of function names restricts them (used for ablations).
     """
     import os
-    allowed = os.environ.get("DIFFEROMETOR_NATIVE", "all")
+    allowed = os.environ.get("DIFFEROMETOR_KERNELS", "all")
     if allowed != "all" and getattr(function, "__name__", None) not in allowed.split(","):
         return None
     try:

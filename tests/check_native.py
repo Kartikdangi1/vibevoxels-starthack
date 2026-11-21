@@ -11,12 +11,12 @@ import differometor.components as _components
 from differometor.components import FUNCTIONS
 from differometor.native_kernels import native_function
 
-# native.py re-expresses components.py by hand: any edit there must be mirrored and this hash updated.
-COMPONENTS_SHA256 = "db7bca7b5a407070bc56278c9fd2ee54e1296b27809a9821dad04a29518ae2f2"
+# native_kernels.py re-expresses components.py by hand: any edit there must be mirrored and this hash updated.
+COMPONENTS_SHA256 = "43de638ee61fc951ebd013dceaec8960d6aa5a58d7c4b96d1d45c4425731f1d8"
 failures = 0
 with open(_components.__file__, "rb") as f:
     if hashlib.sha256(f.read()).hexdigest() != COMPONENTS_SHA256:
-        print("FAIL components.py changed since native.py was written; re-check every kernel"); failures += 1
+        print("FAIL components.py changed since native_kernels.py was written; re-check every kernel"); failures += 1
 
 rng = np.random.default_rng(0)
 B = 64
