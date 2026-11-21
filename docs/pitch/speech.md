@@ -94,6 +94,19 @@ Same physics. Same gradients. **Thirty-five seconds to half a second.** Thank yo
 
 ---
 
+## Alternative demo: the race video (`race_100_steps.mp4`)
+
+Use it instead of the live run (no network needed), or right after it. It shows 100 real optimisation
+steps, original vs final, on the same EPYC core, from measured timestamps
+(`results/race/*.jsonl`). The first seconds play in real time; then it fast-forwards, and the speed
+is shown on screen.
+
+Say over it (~40 s): *"Here is what that means for design work: 100 optimisation steps, gradient and
+Adam each step, the original on top, ours below, started at the same moment. Ours is done in under
+eight seconds. The original is still compiling. We now fast-forward, and the speed is on screen.
+And look at the loss curves: they lie on top of each other. Same physics, same design, just
+**seconds instead of minutes**."* *[Read the final ratio off the end card.]*
+
 ## If the demo fails
 
 - **No network / SSH refused:** run `./docs/pitch/demo.sh` without `DEMO_SSH` (local container).
