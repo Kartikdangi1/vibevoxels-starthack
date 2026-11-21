@@ -9,7 +9,7 @@ import hashlib, sys
 import jax, jax.numpy as jnp, numpy as np
 import differometor.components as _components
 from differometor.components import FUNCTIONS
-from differometor.native import native_function
+from differometor.native_kernels import native_function
 
 # native.py re-expresses components.py by hand: any edit there must be mirrored and this hash updated.
 COMPONENTS_SHA256 = "db7bca7b5a407070bc56278c9fd2ee54e1296b27809a9821dad04a29518ae2f2"

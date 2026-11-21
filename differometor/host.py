@@ -36,7 +36,7 @@ from jax.extend import core as jcore
 
 from differometor.components import FUNCTIONS, UNIT_VACUUM, H_PLANCK, F0
 from differometor.build import LINKING_FUNCTIONS
-from differometor.native import native_function
+from differometor.native_kernels import native_function
 
 NOISE_SCALE = 2 * UNIT_VACUUM * H_PLANCK * F0 * 0.25
 
