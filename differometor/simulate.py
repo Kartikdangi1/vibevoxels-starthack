@@ -17,6 +17,7 @@ Conventions used throughout:
 - All indices are integer arrays that index into parameter vectors and matrix entries.
 """
 
+import os
 import jax
 from time import time
 import jax.numpy as jnp
@@ -25,14 +26,16 @@ from jax import lax, vmap, jit
 from differometor.setups import Setup
 from differometor.build import build, pairs_to_arrays, prepare_arrays, LINKING_FUNCTIONS
 from differometor.components import FUNCTIONS, UNIT_VACUUM, H_PLANCK, F0
+from differometor.sparse_solve import sparse_solve
 
 
 jax.config.update("jax_enable_x64", True)
 
 
-def solve(matrix: jnp.ndarray, right_hand_side: jnp.ndarray) -> jnp.ndarray:
+def _dense_solve(matrix: jnp.ndarray, right_hand_side: jnp.ndarray) -> jnp.ndarray:
     """
-    Solve a dense linear system for each batch item.
+    Solve a dense linear system for each batch item. This is the original implementation,
+    kept as a fallback/reference - see `solve` below for what actually runs by default.
 
     Parameters
     ----------
@@ -57,6 +60,16 @@ def solve(matrix: jnp.ndarray, right_hand_side: jnp.ndarray) -> jnp.ndarray:
     right_hand_side = right_hand_side.astype(jnp.complex128)
     matrix = matrix.astype(jnp.complex128)
     return jnp.linalg.solve(matrix, right_hand_side)
+
+
+# The signal/noise system matrices built by `differometor.build` are extremely sparse (measured
+# on the official uifo_800_3000 fixture: 751x751, ~0.47% nonzero, ~3.6 nonzeros/row - an optical
+# component graph, not a dense system), yet the dense LU path above does full O(N^3) work on them.
+# `sparse_solve` is a verified drop-in (same values and gradients, see
+# differometor/sparse_solve.py's `_self_check`) backed by a sparse direct solve instead; measured
+# ~230x faster on a representative 751x751/101-batch case. Set DIFFEROMETOR_SOLVER=dense to fall
+# back to the original dense path (e.g. to re-confirm a discrepancy is/isn't solver-related).
+solve = _dense_solve if os.environ.get("DIFFEROMETOR_SOLVER") == "dense" else sparse_solve
 
 
 def update(

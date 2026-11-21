@@ -104,8 +104,8 @@ CPU-only benchmark, but documented in case it's useful: [docs/RESOURCES.md](docs
 ## Status
 
 - [x] Get a working Docker environment running `start_here.py` (also works bare-metal in WSL2/Linux) — verified
-- [ ] Run unmodified baseline benchmark, save `benchmark-baseline.json/.png`
-- [ ] Profile to find the bottleneck
-- [ ] Optimize `differometor/`, keep correctness checks passing
-- [ ] Re-run benchmark, compare before/after
-- [ ] Write the short approach note
+- [ ] Run unmodified baseline benchmark, save `benchmark-baseline.json/.png` — **blocked locally** (OOMs during compile; this machine's Docker VM has 7.6 GiB, workload needs ~14.4 GiB peak - needs the AMD instance or similar)
+- [x] Profile to find the bottleneck — found: `solve()` used dense `jnp.linalg.solve` on a 751x751 matrix that's **99.5% zero** (an optical-component graph), ~300 times (see [docs/notes/sparse_solve.md](docs/notes/sparse_solve.md))
+- [x] Optimize `differometor/` — `differometor/sparse_solve.py`, a sparse-direct-solve drop-in (SciPy SuperLU + hand-verified `custom_vjp`), ~230x faster on the raw solve step. Verified against the **real** reference/sensitivity/gradient (not just synthetic matrices) on a 3-frequency subset - see the notes file. `DIFFEROMETOR_SOLVER=dense` falls back to the original path.
+- [ ] Re-run benchmark, compare before/after — **blocked locally**, same OOM as the baseline; the compile-time memory bottleneck is apparently unrelated to `solve()` (OOM point didn't move after the swap), so this needs profiling on a bigger machine too
+- [ ] Write the short approach note (draft exists in [docs/notes/sparse_solve.md](docs/notes/sparse_solve.md), needs the full-scale numbers to finish)
