@@ -18,6 +18,8 @@ Conventions used throughout:
 """
 
 import jax
+import jax.scipy.linalg
+import numpy as np
 from time import time
 import jax.numpy as jnp
 from jax import lax, vmap, jit
@@ -57,6 +59,69 @@ def solve(matrix: jnp.ndarray, right_hand_side: jnp.ndarray) -> jnp.ndarray:
     right_hand_side = right_hand_side.astype(jnp.complex128)
     matrix = matrix.astype(jnp.complex128)
     return jnp.linalg.solve(matrix, right_hand_side)
+
+
+def solve_with_adjoint(
+    matrix: jnp.ndarray, right_hand_side: jnp.ndarray, adjoint_right_hand_sides: jnp.ndarray
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """
+    Solve ``M x = b`` and ``M^H y_d = s_d`` for one matrix using a single LU factorization.
+
+    Parameters
+    ----------
+    matrix : jnp.ndarray
+        System matrix M, shape (N, N).
+    right_hand_side : jnp.ndarray
+        Right-hand side b, shape (N,).
+    adjoint_right_hand_sides : jnp.ndarray
+        Right-hand sides s_d for the conjugate-transposed system, shape (D, N).
+
+    Returns
+    -------
+    solution : jnp.ndarray
+        x = M^{-1} b, shape (N,).
+    adjoint_solutions : jnp.ndarray
+        y_d = M^{-H} s_d, shape (D, N).
+
+    Notes
+    -----
+    This mirrors how ``jnp.linalg.solve`` is implemented: the factorization is
+    taken of ``stop_gradient(M)`` and ``lax.custom_linear_solve`` routes all
+    derivatives through the (linear, cheap) matrix-vector product, so reverse
+    mode reuses the same factors instead of differentiating through the LU.
+    The only change is that one factorization now serves both systems, where
+    previously each was factorized separately.
+    """
+    matrix = matrix.astype(jnp.complex128)
+    right_hand_side = right_hand_side.astype(jnp.complex128)
+    adjoint_right_hand_sides = adjoint_right_hand_sides.astype(jnp.complex128)
+
+    lu, pivots, _ = lax.linalg.lu(lax.stop_gradient(matrix))
+    factors = (lu, pivots)
+
+    def lu_solve(vector, trans):
+        return jax.scipy.linalg.lu_solve(factors, vector, trans=trans)
+
+    # M x = b. Linear transpose of x -> M x is x -> M^T x (trans=1).
+    solution = lax.custom_linear_solve(
+        lambda x: matrix @ x,
+        right_hand_side,
+        solve=lambda _, b: lu_solve(b, 0),
+        transpose_solve=lambda _, b: lu_solve(b, 1),
+    )
+
+    # M^H y = s. Linear transpose of y -> M^H y is y -> conj(M) y,
+    # and conj(M) z = c  <=>  z = conj(M^{-1} conj(c)).
+    def adjoint_solve(vector):
+        return lax.custom_linear_solve(
+            lambda y: jnp.conjugate(matrix).T @ y,
+            vector,
+            solve=lambda _, s: lu_solve(s, 2),
+            transpose_solve=lambda _, c: jnp.conjugate(lu_solve(jnp.conjugate(c), 0)),
+        )
+
+    adjoint_solutions = vmap(adjoint_solve)(adjoint_right_hand_sides)
+    return solution, adjoint_solutions
 
 
 def update(
@@ -105,10 +170,86 @@ def update(
     Python list of callables referenced as a global is treated as static during
     tracing, which keeps the function jittable as long as the list is stable.
     """
-    function_inputs = parameters[function_input_indices]
-    output_matrix = vmap(lambda i, x: lax.switch(i, FUNCTIONS, x))(function_indices, function_inputs)
-    outputs = output_matrix[output_indices[0], output_indices[1]]
+    outputs = evaluate_entries(parameters, function_input_indices, output_indices, function_indices)
     return matrix.at[matrix_indices[0], matrix_indices[1]].set(outputs)
+
+
+def evaluate_entries(
+    parameters: jnp.ndarray,
+    function_input_indices: jnp.ndarray | tuple[jnp.ndarray, ...],
+    output_indices: tuple[jnp.ndarray, jnp.ndarray],
+    function_indices: jnp.ndarray,
+) -> jnp.ndarray:
+    """
+    Evaluate component functions and return the values destined for matrix entries.
+
+    Parameters
+    ----------
+    parameters : jnp.ndarray
+        Parameter values for one simulation instance, shape (P,).
+    function_input_indices : jnp.ndarray or tuple of jnp.ndarray
+        Either the original layout, shape (K, I), paired with ``function_indices``
+        selecting a function per row; or the grouped layout produced by
+        ``group_by_function``: a tuple with one (K_f, I) index array per entry of
+        ``FUNCTIONS``, rows ordered by function.
+    output_indices : tuple[jnp.ndarray, jnp.ndarray]
+        (row into the evaluated outputs, output slot), each shape (M,).
+    function_indices : jnp.ndarray
+        Function selector per row, shape (K,). Only used by the original layout.
+
+    Returns
+    -------
+    outputs : jnp.ndarray
+        Complex values for the M matrix entries, shape (M,).
+
+    Notes
+    -----
+    The original layout evaluates ``lax.switch`` under ``vmap``, which turns into a
+    select over *all* functions in ``FUNCTIONS`` for every row and puts every branch
+    (and its derivative) into the compiled program. The grouped layout calls each
+    function that the setup actually uses once, on its own batch of rows, which
+    gives identical values with a much smaller program.
+    """
+    if isinstance(function_input_indices, tuple):
+        output_matrix = jnp.concatenate(
+            [
+                vmap(FUNCTIONS[function_index])(parameters[indices])
+                for function_index, indices in enumerate(function_input_indices)
+                if indices.shape[0] > 0
+            ]
+        )
+    else:
+        function_inputs = parameters[function_input_indices]
+        output_matrix = vmap(lambda i, x: lax.switch(i, FUNCTIONS, x))(function_indices, function_inputs)
+    return output_matrix[output_indices[0], output_indices[1]]
+
+
+def group_by_function(
+    function_input_indices: jnp.ndarray,
+    function_indices: jnp.ndarray,
+    output_indices: jnp.ndarray,
+) -> tuple[tuple[jnp.ndarray, ...], jnp.ndarray, jnp.ndarray]:
+    """
+    Reorder build-step function arrays so that rows using the same function are contiguous.
+
+    Runs once at build time on concrete arrays. Returns the grouped input indices
+    (one array per entry of ``FUNCTIONS``; empty for unused functions), the
+    function indices in the new row order, and ``output_indices`` with its row
+    references remapped to the new order. ``evaluate_entries`` then produces the
+    exact same entry values as the original ``lax.switch`` path.
+    """
+    inputs = np.asarray(function_input_indices)
+    functions = np.asarray(function_indices)
+    outputs = np.asarray(output_indices)
+    order = np.argsort(functions, kind="stable")
+    new_row = np.empty_like(order)
+    new_row[order] = np.arange(order.size)
+    sorted_inputs, sorted_functions = inputs[order], functions[order]
+    grouped = tuple(
+        jnp.asarray(sorted_inputs[sorted_functions == function_index]) for function_index in range(len(FUNCTIONS))
+    )
+    remapped_outputs = jnp.asarray(np.stack((new_row[outputs[0]], outputs[1])))
+    return grouped, jnp.asarray(sorted_functions), remapped_outputs
 
 
 def expand_parameters(array: jnp.ndarray, indices: jnp.ndarray, values: jnp.ndarray) -> jnp.ndarray:
@@ -332,10 +473,8 @@ def simulate(
         jnp.conjugate(signal_matrix[:, carrier_size : carrier_size * 2, carrier_size * 2 :])
     )
 
-    signal = vmap(solve)(signal_matrix[:, :, :-1], signal_matrix[:, :, -1])
-
     # --------------------
-    # Quantum noise solve
+    # Quantum noise selection vectors (depend only on the carrier)
     # --------------------
     # Apply quadrature-homodyne-detector phases into the selection vectors.
     # `lax.scatter_mul` is used (rather than `.at[...].set`) so empty index arrays
@@ -366,13 +505,37 @@ def simulate(
         :, :, carrier.shape[1] : carrier.shape[1] * 2
     ].set(lower_carrier_selections)
 
-    # Back-propagate detector weights by solving the transposed conjugated signal system.
-    transposed_conjugated_signal_matrix = jnp.transpose(jnp.conjugate(signal_matrix[:, :, :-1]), (0, 2, 1))
+    # --------------------
+    # Signal solve + detector back-propagation, sharing one LU per frequency
+    # --------------------
+    # signal        = M^{-1} b
+    # noise_weights = M^{-H} s   (detector weights back-propagated through the signal system)
     carrier_selections = jnp.broadcast_to(
         carrier_selections,
-        (carrier_selections.shape[0], transposed_conjugated_signal_matrix.shape[0], carrier_selections.shape[2]),
+        (carrier_selections.shape[0], signal_matrix.shape[0], carrier_selections.shape[2]),
     )
-    noise_weights = vmap(vmap(solve), in_axes=(None, 0))(transposed_conjugated_signal_matrix, carrier_selections)
+    signal, noise_weights = vmap(solve_with_adjoint, in_axes=(0, 0, 1), out_axes=(0, 1))(
+        signal_matrix[:, :, :-1], signal_matrix[:, :, -1], carrier_selections
+    )
+
+    # --------------------
+    # Quantum noise
+    # --------------------
+
+    if noise_matrix is None:
+        # Sparse input noise (set by `run_build_step` when the base noise matrix is
+        # all zeros and no entry is written twice): V_i has only the entries
+        # (r_e, c_e, value_e), so w^H V_i w = sum_e conj(w[r_e]) * value_e * w[c_e].
+        # This avoids materializing a dense (values, N, N) noise matrix.
+        noise_values = vmap(evaluate_entries, in_axes=(0, None, None, None))(
+            parameters, noise_function_input_indices, noise_output_indices, noise_function_indices
+        )
+        rows, columns = noise_system_matrix_indices
+        temporary_sum = jnp.sum(
+            jnp.real(jnp.conjugate(noise_weights[:, :, rows]) * noise_values * noise_weights[:, :, columns]), axis=2
+        )
+        noise = jnp.sqrt(2 * temporary_sum * UNIT_VACUUM * H_PLANCK * F0 * 0.25)
+        return carrier.T, signal.T, noise.squeeze()
 
     # Update noise source matrix (may depend on current parameters).
     noise_matrix = vmap(update, in_axes=(0, None, None, None, None, None))(
@@ -402,12 +565,14 @@ def simulate(
         """
         return jnp.einsum("bij,bj->bi", matrix_batch, vector_batch)
 
-    # Project noise sources into the system and propagate through the signal matrix.
+    # Project noise sources into the system.
     noise_sources = vmap(matmul_single_batch, in_axes=(None, 0))(noise_matrix, noise_weights)
-    covariances = vmap(vmap(solve), in_axes=(None, 0))(signal_matrix[:, :, :-1], noise_sources)
 
-    # Convert propagated covariances into amplitude spectral density.
-    temporary_sum = jnp.sum(jnp.real(covariances * jnp.conjugate(carrier_selections)), axis=2)
+    # Output noise power s^H M^{-1} V_i M^{-H} s. Previously this solved
+    # c = M^{-1} (V_i w) with a third factorization and formed Re(s^H c).
+    # Since s^H M^{-1} = (M^{-H} s)^H = w^H, the same quantity is Re(w^H V_i w),
+    # which needs no further solve.
+    temporary_sum = jnp.sum(jnp.real(noise_sources * jnp.conjugate(noise_weights)), axis=2)
     noise = jnp.sqrt(2 * temporary_sum * UNIT_VACUUM * H_PLANCK * F0 * 0.25)
 
     return carrier.T, signal.T, noise.squeeze()
@@ -477,6 +642,7 @@ def run_build_step(
         )
 
     simulation_arrays = {arg_names[i]: array for i, array in enumerate(all_arrays)}
+    _optimize_layout(simulation_arrays)
 
     if timeit:
         for array in simulation_arrays.values():
@@ -484,6 +650,35 @@ def run_build_step(
         return time() - start, (simulation_arrays, metadata)
 
     return simulation_arrays, *metadata
+
+
+def _optimize_layout(simulation_arrays: dict) -> None:
+    """
+    Rewrite build-step arrays (in place) into the layouts that `simulate` evaluates fastest.
+
+    - Function arrays of the carrier, signal and noise systems are grouped by
+      function (see `group_by_function`), removing `lax.switch` from the program.
+    - If the base noise matrix is all zeros and no noise entry is written twice,
+      `noise_matrix` is replaced by None so `simulate` uses the sparse noise path.
+      Both conditions are checked here on concrete values; otherwise the dense
+      path is kept.
+
+    All rewrites are exact reorderings/representations of the same data.
+    """
+    for prefix in ("carrier", "signal", "noise"):
+        grouped, functions, outputs = group_by_function(
+            simulation_arrays[f"{prefix}_function_input_indices"],
+            simulation_arrays[f"{prefix}_function_indices"],
+            simulation_arrays[f"{prefix}_output_indices"],
+        )
+        simulation_arrays[f"{prefix}_function_input_indices"] = grouped
+        simulation_arrays[f"{prefix}_function_indices"] = functions
+        simulation_arrays[f"{prefix}_output_indices"] = outputs
+
+    noise_positions = np.asarray(simulation_arrays["noise_system_matrix_indices"])
+    unique_positions = np.unique(noise_positions, axis=1).shape[1]
+    if unique_positions == noise_positions.shape[1] and not np.asarray(simulation_arrays["noise_matrix"]).any():
+        simulation_arrays["noise_matrix"] = None
 
 
 def run_simulation_step(
