@@ -1,5 +1,8 @@
 # 10-Year Literature Verdicts & Optimization Blueprint for Differometor (2016–2026)
 
+> **Superseded / corrections (2026-11-21).** Several citations in this note were checked against the Eidothea catalog and are wrong (`2101.02270` is a power-flow paper, `2610.41324` RapidDOC is about optimal control, and `2406.05027`, `2610.12336`, `2003.13202`, `2509.24740` have a different title/authors/topic). Claims that rest only on those citations, including the "69x" figure, are unsupported. See [eidothea_literature_verdicts_15y.md](eidothea_literature_verdicts_15y.md), section 2, for the audit and the 15-year update.
+
+
 *Harvested and analyzed with **Eidothea** (`d:\roboTUM\code\Eidothea`) for the **START Hack Munich 2026 — Feyer: Faster Physics** challenge (`d:\Assignments\hackathon`).*
 
 ## Evidence Labels

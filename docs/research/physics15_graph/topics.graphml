@@ -1,0 +1,1149 @@
+<?xml version='1.0' encoding='utf-8'?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
+  <key id="d6" for="edge" attr.name="weight" attr.type="double" />
+  <key id="d5" for="edge" attr.name="cites" attr.type="long" />
+  <key id="d4" for="edge" attr.name="papers" attr.type="long" />
+  <key id="d3" for="node" attr.name="label" attr.type="string" />
+  <key id="d2" for="node" attr.name="group" attr.type="string" />
+  <key id="d1" for="node" attr.name="taxonomy" attr.type="string" />
+  <key id="d0" for="node" attr.name="papers" attr.type="long" />
+  <graph edgedefault="undirected">
+    <node id="topic:physics/compile_cold_start">
+      <data key="d0">41</data>
+      <data key="d1">physics</data>
+      <data key="d2">E host &amp; numerics</data>
+      <data key="d3">Compile latency, cold start, control-flow cost under vectorisation</data>
+    </node>
+    <node id="topic:physics/host_exec">
+      <data key="d0">50</data>
+      <data key="d1">physics</data>
+      <data key="d2">E host &amp; numerics</data>
+      <data key="d3">Running traced programs outside XLA: host callbacks, jaxpr interpreters, staging</data>
+    </node>
+    <node id="topic:physics/jax_xla">
+      <data key="d0">215</data>
+      <data key="d1">physics</data>
+      <data key="d2">D jax &amp; compiler</data>
+      <data key="d3">JAX, XLA compilation, tracing overhead and custom primitives</data>
+    </node>
+    <node id="topic:physics/autodiff_opt">
+      <data key="d0">223</data>
+      <data key="d1">physics</data>
+      <data key="d2">D jax &amp; compiler</data>
+      <data key="d3">Automatic differentiation graph optimization, checkpointing and sparsity</data>
+    </node>
+    <node id="topic:physics/low_rank_update">
+      <data key="d0">162</data>
+      <data key="d1">physics</data>
+      <data key="d2">B sparse solvers</data>
+      <data key="d3">Low-rank updates, Sherman-Morrison-Woodbury and Schur complement</data>
+    </node>
+    <node id="topic:physics/sparse_lu">
+      <data key="d0">113</data>
+      <data key="d1">physics</data>
+      <data key="d2">B sparse solvers</data>
+      <data key="d3">Sparse LU factorization and direct linear solvers (KLU, SuperLU, UMFPACK)</data>
+    </node>
+    <node id="topic:physics/xd_circuit">
+      <data key="d0">37</data>
+      <data key="d1">physics</data>
+      <data key="d2">F cross-domain</data>
+      <data key="d3">Circuit simulation: SPICE, modified nodal analysis, AC/noise analysis, harmonic balance</data>
+    </node>
+    <node id="topic:physics/implicit_diff">
+      <data key="d0">105</data>
+      <data key="d1">physics</data>
+      <data key="d2">C autodiff &amp; adjoint</data>
+      <data key="d3">Implicit differentiation and adjoint state methods for linear systems</data>
+    </node>
+    <node id="topic:physics/freq_sweep">
+      <data key="d0">220</data>
+      <data key="d1">physics</data>
+      <data key="d2">B sparse solvers</data>
+      <data key="d3">Multi-frequency sweep acceleration, reuse and model order reduction</data>
+    </node>
+    <node id="topic:physics/surrogate_ml">
+      <data key="d0">132</data>
+      <data key="d1">physics</data>
+      <data key="d2">F cross-domain</data>
+      <data key="d3">Learned surrogates and neural operators as an alternative to exact solvers</data>
+    </node>
+    <node id="topic:physics/sideband_mod">
+      <data key="d0">188</data>
+      <data key="d1">physics</data>
+      <data key="d2">A interferometry</data>
+      <data key="d3">Carrier, sideband modulation and transfer matrix formalisms</data>
+    </node>
+    <node id="topic:physics/iter_refine">
+      <data key="d0">102</data>
+      <data key="d1">physics</data>
+      <data key="d2">E host &amp; numerics</data>
+      <data key="d3">Iterative refinement, mixed precision and accuracy of ill-conditioned sparse solves</data>
+    </node>
+    <node id="topic:physics/diff_optics">
+      <data key="d0">27</data>
+      <data key="d1">physics</data>
+      <data key="d2">C autodiff &amp; adjoint</data>
+      <data key="d3">Differentiable optical and photonic circuit design</data>
+    </node>
+    <node id="topic:physics/xd_power_grid">
+      <data key="d0">106</data>
+      <data key="d1">physics</data>
+      <data key="d2">F cross-domain</data>
+      <data key="d3">Power-system simulation: power flow, contingency analysis, network reduction</data>
+    </node>
+    <node id="topic:physics/xd_ordering_graph">
+      <data key="d0">107</data>
+      <data key="d1">physics</data>
+      <data key="d2">F cross-domain</data>
+      <data key="d3">Graph algorithms behind sparse elimination: treewidth, ordering, partitioning</data>
+    </node>
+    <node id="topic:physics/xd_fdfd_geo">
+      <data key="d0">112</data>
+      <data key="d1">physics</data>
+      <data key="d2">F cross-domain</data>
+      <data key="d3">Frequency-domain wave solvers: FDFD, Helmholtz, RCWA, frequency-domain full-waveform inversion</data>
+    </node>
+    <node id="topic:physics/quantum_noise">
+      <data key="d0">177</data>
+      <data key="d1">physics</data>
+      <data key="d2">A interferometry</data>
+      <data key="d3">Quantum noise, shot noise, radiation pressure and squeezing</data>
+    </node>
+    <node id="topic:physics/batched_sparse">
+      <data key="d0">21</data>
+      <data key="d1">physics</data>
+      <data key="d2">B sparse solvers</data>
+      <data key="d3">Batched and vectorized sparse solvers (CPU/SIMD/GPU)</data>
+    </node>
+    <node id="topic:physics/ifo_sim">
+      <data key="d0">110</data>
+      <data key="d1">physics</data>
+      <data key="d2">A interferometry</data>
+      <data key="d3">Frequency-domain optical interferometer simulation (Finesse, Differometor)</data>
+    </node>
+    <node id="topic:physics/jvp_transpose">
+      <data key="d0">39</data>
+      <data key="d1">physics</data>
+      <data key="d2">E host &amp; numerics</data>
+      <data key="d3">Linearization and transposition: reverse mode derived from the forward (JVP) program</data>
+    </node>
+    <node id="topic:physics/xd_quantum_transport">
+      <data key="d0">110</data>
+      <data key="d1">physics</data>
+      <data key="d2">F cross-domain</data>
+      <data key="d3">Quantum transport and selected inversion: NEGF, recursive Green's function, Dyson</data>
+    </node>
+    <node id="topic:physics/adj_quantum_cov">
+      <data key="d0">21</data>
+      <data key="d1">physics</data>
+      <data key="d2">C autodiff &amp; adjoint</data>
+      <data key="d3">Adjoint elimination in covariance / quadratic forms and trace derivatives</data>
+    </node>
+    <node id="topic:physics/xd_struct_dyn">
+      <data key="d0">16</data>
+      <data key="d1">physics</data>
+      <data key="d2">F cross-domain</data>
+      <data key="d3">Structural dynamics: frequency response functions, substructuring, component mode synthesis</data>
+    </node>
+    <node id="topic:physics/xd_mor_control">
+      <data key="d0">81</data>
+      <data key="d1">physics</data>
+      <data key="d2">F cross-domain</data>
+      <data key="d3">Large-scale LTI model reduction and frequency response from control theory</data>
+    </node>
+    <node id="topic:physics/gw_detector">
+      <data key="d0">156</data>
+      <data key="d1">physics</data>
+      <data key="d2">A interferometry</data>
+      <data key="d3">Gravitational-wave detector optical design and topology</data>
+    </node>
+    <node id="topic:physics/xd_photonic_cascade">
+      <data key="d0">51</data>
+      <data key="d1">physics</data>
+      <data key="d2">F cross-domain</data>
+      <data key="d3">Scattering-matrix cascading, Redheffer star product, signal-flow graphs, photonic circuit simulators</data>
+    </node>
+    <node id="topic:physics/iter_recycling">
+      <data key="d0">28</data>
+      <data key="d1">physics</data>
+      <data key="d2">E host &amp; numerics</data>
+      <data key="d3">Krylov recycling and preconditioner reuse across sequences of related systems</data>
+    </node>
+    <edge source="topic:physics/compile_cold_start" target="topic:physics/host_exec">
+      <data key="d4">8</data>
+      <data key="d5">4</data>
+      <data key="d6">0.0963855421686747</data>
+    </edge>
+    <edge source="topic:physics/compile_cold_start" target="topic:physics/jax_xla">
+      <data key="d4">19</data>
+      <data key="d5">6</data>
+      <data key="d6">0.08016877637130802</data>
+    </edge>
+    <edge source="topic:physics/compile_cold_start" target="topic:physics/surrogate_ml">
+      <data key="d4">1</data>
+      <data key="d5">0</data>
+      <data key="d6">0.005813953488372093</data>
+    </edge>
+    <edge source="topic:physics/compile_cold_start" target="topic:physics/xd_ordering_graph">
+      <data key="d4">1</data>
+      <data key="d5">0</data>
+      <data key="d6">0.006802721088435374</data>
+    </edge>
+    <edge source="topic:physics/host_exec" target="topic:physics/jax_xla">
+      <data key="d4">20</data>
+      <data key="d5">9</data>
+      <data key="d6">0.08163265306122448</data>
+    </edge>
+    <edge source="topic:physics/host_exec" target="topic:physics/autodiff_opt">
+      <data key="d4">4</data>
+      <data key="d5">8</data>
+      <data key="d6">0.01486988847583643</data>
+    </edge>
+    <edge source="topic:physics/host_exec" target="topic:physics/jvp_transpose">
+      <data key="d4">1</data>
+      <data key="d5">1</data>
+      <data key="d6">0.011363636363636364</data>
+    </edge>
+    <edge source="topic:physics/host_exec" target="topic:physics/freq_sweep">
+      <data key="d4">1</data>
+      <data key="d5">2</data>
+      <data key="d6">0.0037174721189591076</data>
+    </edge>
+    <edge source="topic:physics/host_exec" target="topic:physics/xd_mor_control">
+      <data key="d4">1</data>
+      <data key="d5">1</data>
+      <data key="d6">0.007692307692307693</data>
+    </edge>
+    <edge source="topic:physics/host_exec" target="topic:physics/implicit_diff">
+      <data key="d4">0</data>
+      <data key="d5">1</data>
+      <data key="d6">0.0</data>
+    </edge>
+    <edge source="topic:physics/host_exec" target="topic:physics/batched_sparse">
+      <data key="d4">0</data>
+      <data key="d5">1</data>
+      <data key="d6">0.0</data>
+    </edge>
+    <edge source="topic:physics/jax_xla" target="topic:physics/autodiff_opt">
+      <data key="d4">102</data>
+      <data key="d5">292</data>
+      <data key="d6">0.30357142857142855</data>
+    </edge>
+    <edge source="topic:physics/jax_xla" target="topic:physics/low_rank_update">
+      <data key="d4">2</data>
+      <data key="d5">3</data>
+      <data key="d6">0.005333333333333333</data>
+    </edge>
+    <edge source="topic:physics/jax_xla" target="topic:physics/sparse_lu">
+      <data key="d4">7</data>
+      <data key="d5">16</data>
+      <data key="d6">0.021806853582554516</data>
+    </edge>
+    <edge source="topic:physics/jax_xla" target="topic:physics/jvp_transpose">
+      <data key="d4">4</data>
+      <data key="d5">7</data>
+      <data key="d6">0.016</data>
+    </edge>
+    <edge source="topic:physics/jax_xla" target="topic:physics/implicit_diff">
+      <data key="d4">39</data>
+      <data key="d5">110</data>
+      <data key="d6">0.1387900355871886</data>
+    </edge>
+    <edge source="topic:physics/jax_xla" target="topic:physics/surrogate_ml">
+      <data key="d4">18</data>
+      <data key="d5">41</data>
+      <data key="d6">0.0547112462006079</data>
+    </edge>
+    <edge source="topic:physics/jax_xla" target="topic:physics/iter_refine">
+      <data key="d4">1</data>
+      <data key="d5">2</data>
+      <data key="d6">0.0031645569620253164</data>
+    </edge>
+    <edge source="topic:physics/jax_xla" target="topic:physics/xd_fdfd_geo">
+      <data key="d4">3</data>
+      <data key="d5">9</data>
+      <data key="d6">0.009259259259259259</data>
+    </edge>
+    <edge source="topic:physics/jax_xla" target="topic:physics/freq_sweep">
+      <data key="d4">2</data>
+      <data key="d5">6</data>
+      <data key="d6">0.004618937644341801</data>
+    </edge>
+    <edge source="topic:physics/jax_xla" target="topic:physics/iter_recycling">
+      <data key="d4">1</data>
+      <data key="d5">6</data>
+      <data key="d6">0.004132231404958678</data>
+    </edge>
+    <edge source="topic:physics/jax_xla" target="topic:physics/xd_power_grid">
+      <data key="d4">1</data>
+      <data key="d5">1</data>
+      <data key="d6">0.003125</data>
+    </edge>
+    <edge source="topic:physics/jax_xla" target="topic:physics/sideband_mod">
+      <data key="d4">1</data>
+      <data key="d5">1</data>
+      <data key="d6">0.0024875621890547263</data>
+    </edge>
+    <edge source="topic:physics/jax_xla" target="topic:physics/diff_optics">
+      <data key="d4">2</data>
+      <data key="d5">8</data>
+      <data key="d6">0.008333333333333333</data>
+    </edge>
+    <edge source="topic:physics/jax_xla" target="topic:physics/gw_detector">
+      <data key="d4">2</data>
+      <data key="d5">3</data>
+      <data key="d6">0.005420054200542005</data>
+    </edge>
+    <edge source="topic:physics/jax_xla" target="topic:physics/ifo_sim">
+      <data key="d4">2</data>
+      <data key="d5">7</data>
+      <data key="d6">0.006191950464396285</data>
+    </edge>
+    <edge source="topic:physics/jax_xla" target="topic:physics/batched_sparse">
+      <data key="d4">0</data>
+      <data key="d5">2</data>
+      <data key="d6">0.0</data>
+    </edge>
+    <edge source="topic:physics/jax_xla" target="topic:physics/xd_quantum_transport">
+      <data key="d4">0</data>
+      <data key="d5">1</data>
+      <data key="d6">0.0</data>
+    </edge>
+    <edge source="topic:physics/autodiff_opt" target="topic:physics/low_rank_update">
+      <data key="d4">3</data>
+      <data key="d5">5</data>
+      <data key="d6">0.007853403141361256</data>
+    </edge>
+    <edge source="topic:physics/autodiff_opt" target="topic:physics/sparse_lu">
+      <data key="d4">14</data>
+      <data key="d5">24</data>
+      <data key="d6">0.043478260869565216</data>
+    </edge>
+    <edge source="topic:physics/autodiff_opt" target="topic:physics/xd_circuit">
+      <data key="d4">2</data>
+      <data key="d5">1</data>
+      <data key="d6">0.007751937984496124</data>
+    </edge>
+    <edge source="topic:physics/autodiff_opt" target="topic:physics/xd_ordering_graph">
+      <data key="d4">2</data>
+      <data key="d5">0</data>
+      <data key="d6">0.006097560975609756</data>
+    </edge>
+    <edge source="topic:physics/autodiff_opt" target="topic:physics/surrogate_ml">
+      <data key="d4">16</data>
+      <data key="d5">42</data>
+      <data key="d6">0.0471976401179941</data>
+    </edge>
+    <edge source="topic:physics/autodiff_opt" target="topic:physics/implicit_diff">
+      <data key="d4">38</data>
+      <data key="d5">120</data>
+      <data key="d6">0.1310344827586207</data>
+    </edge>
+    <edge source="topic:physics/autodiff_opt" target="topic:physics/diff_optics">
+      <data key="d4">8</data>
+      <data key="d5">24</data>
+      <data key="d6">0.03305785123966942</data>
+    </edge>
+    <edge source="topic:physics/autodiff_opt" target="topic:physics/xd_fdfd_geo">
+      <data key="d4">7</data>
+      <data key="d5">22</data>
+      <data key="d6">0.021341463414634148</data>
+    </edge>
+    <edge source="topic:physics/autodiff_opt" target="topic:physics/xd_photonic_cascade">
+      <data key="d4">1</data>
+      <data key="d5">2</data>
+      <data key="d6">0.003663003663003663</data>
+    </edge>
+    <edge source="topic:physics/autodiff_opt" target="topic:physics/batched_sparse">
+      <data key="d4">1</data>
+      <data key="d5">3</data>
+      <data key="d6">0.00411522633744856</data>
+    </edge>
+    <edge source="topic:physics/autodiff_opt" target="topic:physics/iter_refine">
+      <data key="d4">3</data>
+      <data key="d5">6</data>
+      <data key="d6">0.009316770186335404</data>
+    </edge>
+    <edge source="topic:physics/autodiff_opt" target="topic:physics/iter_recycling">
+      <data key="d4">1</data>
+      <data key="d5">6</data>
+      <data key="d6">0.004</data>
+    </edge>
+    <edge source="topic:physics/autodiff_opt" target="topic:physics/freq_sweep">
+      <data key="d4">2</data>
+      <data key="d5">8</data>
+      <data key="d6">0.0045351473922902496</data>
+    </edge>
+    <edge source="topic:physics/autodiff_opt" target="topic:physics/xd_power_grid">
+      <data key="d4">4</data>
+      <data key="d5">17</data>
+      <data key="d6">0.012307692307692308</data>
+    </edge>
+    <edge source="topic:physics/autodiff_opt" target="topic:physics/jvp_transpose">
+      <data key="d4">4</data>
+      <data key="d5">12</data>
+      <data key="d6">0.015503875968992248</data>
+    </edge>
+    <edge source="topic:physics/autodiff_opt" target="topic:physics/sideband_mod">
+      <data key="d4">2</data>
+      <data key="d5">1</data>
+      <data key="d6">0.004889975550122249</data>
+    </edge>
+    <edge source="topic:physics/autodiff_opt" target="topic:physics/ifo_sim">
+      <data key="d4">4</data>
+      <data key="d5">7</data>
+      <data key="d6">0.0121580547112462</data>
+    </edge>
+    <edge source="topic:physics/autodiff_opt" target="topic:physics/gw_detector">
+      <data key="d4">2</data>
+      <data key="d5">7</data>
+      <data key="d6">0.005305039787798408</data>
+    </edge>
+    <edge source="topic:physics/autodiff_opt" target="topic:physics/xd_quantum_transport">
+      <data key="d4">1</data>
+      <data key="d5">2</data>
+      <data key="d6">0.0030120481927710845</data>
+    </edge>
+    <edge source="topic:physics/autodiff_opt" target="topic:physics/quantum_noise">
+      <data key="d4">0</data>
+      <data key="d5">2</data>
+      <data key="d6">0.0</data>
+    </edge>
+    <edge source="topic:physics/low_rank_update" target="topic:physics/sparse_lu">
+      <data key="d4">25</data>
+      <data key="d5">56</data>
+      <data key="d6">0.1</data>
+    </edge>
+    <edge source="topic:physics/low_rank_update" target="topic:physics/iter_refine">
+      <data key="d4">11</data>
+      <data key="d5">27</data>
+      <data key="d6">0.043478260869565216</data>
+    </edge>
+    <edge source="topic:physics/low_rank_update" target="topic:physics/xd_ordering_graph">
+      <data key="d4">30</data>
+      <data key="d5">67</data>
+      <data key="d6">0.12552301255230125</data>
+    </edge>
+    <edge source="topic:physics/low_rank_update" target="topic:physics/batched_sparse">
+      <data key="d4">2</data>
+      <data key="d5">2</data>
+      <data key="d6">0.011049723756906077</data>
+    </edge>
+    <edge source="topic:physics/low_rank_update" target="topic:physics/xd_power_grid">
+      <data key="d4">5</data>
+      <data key="d5">6</data>
+      <data key="d6">0.019011406844106463</data>
+    </edge>
+    <edge source="topic:physics/low_rank_update" target="topic:physics/xd_fdfd_geo">
+      <data key="d4">24</data>
+      <data key="d5">30</data>
+      <data key="d6">0.096</data>
+    </edge>
+    <edge source="topic:physics/low_rank_update" target="topic:physics/sideband_mod">
+      <data key="d4">3</data>
+      <data key="d5">0</data>
+      <data key="d6">0.008645533141210375</data>
+    </edge>
+    <edge source="topic:physics/low_rank_update" target="topic:physics/jvp_transpose">
+      <data key="d4">2</data>
+      <data key="d5">1</data>
+      <data key="d6">0.010050251256281407</data>
+    </edge>
+    <edge source="topic:physics/low_rank_update" target="topic:physics/surrogate_ml">
+      <data key="d4">1</data>
+      <data key="d5">2</data>
+      <data key="d6">0.0034129692832764505</data>
+    </edge>
+    <edge source="topic:physics/low_rank_update" target="topic:physics/xd_quantum_transport">
+      <data key="d4">11</data>
+      <data key="d5">28</data>
+      <data key="d6">0.0421455938697318</data>
+    </edge>
+    <edge source="topic:physics/low_rank_update" target="topic:physics/freq_sweep">
+      <data key="d4">14</data>
+      <data key="d5">28</data>
+      <data key="d6">0.03804347826086957</data>
+    </edge>
+    <edge source="topic:physics/low_rank_update" target="topic:physics/iter_recycling">
+      <data key="d4">5</data>
+      <data key="d5">6</data>
+      <data key="d6">0.02702702702702703</data>
+    </edge>
+    <edge source="topic:physics/low_rank_update" target="topic:physics/xd_struct_dyn">
+      <data key="d4">3</data>
+      <data key="d5">2</data>
+      <data key="d6">0.017142857142857144</data>
+    </edge>
+    <edge source="topic:physics/low_rank_update" target="topic:physics/adj_quantum_cov">
+      <data key="d4">1</data>
+      <data key="d5">0</data>
+      <data key="d6">0.005494505494505495</data>
+    </edge>
+    <edge source="topic:physics/low_rank_update" target="topic:physics/implicit_diff">
+      <data key="d4">0</data>
+      <data key="d5">3</data>
+      <data key="d6">0.0</data>
+    </edge>
+    <edge source="topic:physics/low_rank_update" target="topic:physics/diff_optics">
+      <data key="d4">0</data>
+      <data key="d5">1</data>
+      <data key="d6">0.0</data>
+    </edge>
+    <edge source="topic:physics/low_rank_update" target="topic:physics/xd_mor_control">
+      <data key="d4">0</data>
+      <data key="d5">3</data>
+      <data key="d6">0.0</data>
+    </edge>
+    <edge source="topic:physics/sparse_lu" target="topic:physics/implicit_diff">
+      <data key="d4">2</data>
+      <data key="d5">7</data>
+      <data key="d6">0.009259259259259259</data>
+    </edge>
+    <edge source="topic:physics/sparse_lu" target="topic:physics/batched_sparse">
+      <data key="d4">4</data>
+      <data key="d5">4</data>
+      <data key="d6">0.03076923076923077</data>
+    </edge>
+    <edge source="topic:physics/sparse_lu" target="topic:physics/iter_refine">
+      <data key="d4">16</data>
+      <data key="d5">34</data>
+      <data key="d6">0.08040201005025126</data>
+    </edge>
+    <edge source="topic:physics/sparse_lu" target="topic:physics/xd_power_grid">
+      <data key="d4">10</data>
+      <data key="d5">26</data>
+      <data key="d6">0.04784688995215311</data>
+    </edge>
+    <edge source="topic:physics/sparse_lu" target="topic:physics/xd_ordering_graph">
+      <data key="d4">29</data>
+      <data key="d5">73</data>
+      <data key="d6">0.1518324607329843</data>
+    </edge>
+    <edge source="topic:physics/sparse_lu" target="topic:physics/adj_quantum_cov">
+      <data key="d4">3</data>
+      <data key="d5">2</data>
+      <data key="d6">0.022900763358778626</data>
+    </edge>
+    <edge source="topic:physics/sparse_lu" target="topic:physics/xd_circuit">
+      <data key="d4">2</data>
+      <data key="d5">2</data>
+      <data key="d6">0.013513513513513514</data>
+    </edge>
+    <edge source="topic:physics/sparse_lu" target="topic:physics/iter_recycling">
+      <data key="d4">6</data>
+      <data key="d5">9</data>
+      <data key="d6">0.044444444444444446</data>
+    </edge>
+    <edge source="topic:physics/sparse_lu" target="topic:physics/freq_sweep">
+      <data key="d4">14</data>
+      <data key="d5">20</data>
+      <data key="d6">0.0438871473354232</data>
+    </edge>
+    <edge source="topic:physics/sparse_lu" target="topic:physics/jvp_transpose">
+      <data key="d4">2</data>
+      <data key="d5">2</data>
+      <data key="d6">0.013333333333333334</data>
+    </edge>
+    <edge source="topic:physics/sparse_lu" target="topic:physics/xd_quantum_transport">
+      <data key="d4">10</data>
+      <data key="d5">28</data>
+      <data key="d6">0.046948356807511735</data>
+    </edge>
+    <edge source="topic:physics/sparse_lu" target="topic:physics/surrogate_ml">
+      <data key="d4">2</data>
+      <data key="d5">2</data>
+      <data key="d6">0.00823045267489712</data>
+    </edge>
+    <edge source="topic:physics/sparse_lu" target="topic:physics/xd_photonic_cascade">
+      <data key="d4">1</data>
+      <data key="d5">1</data>
+      <data key="d6">0.006134969325153374</data>
+    </edge>
+    <edge source="topic:physics/sparse_lu" target="topic:physics/xd_fdfd_geo">
+      <data key="d4">5</data>
+      <data key="d5">22</data>
+      <data key="d6">0.022727272727272728</data>
+    </edge>
+    <edge source="topic:physics/sparse_lu" target="topic:physics/xd_mor_control">
+      <data key="d4">1</data>
+      <data key="d5">7</data>
+      <data key="d6">0.0051813471502590676</data>
+    </edge>
+    <edge source="topic:physics/sparse_lu" target="topic:physics/diff_optics">
+      <data key="d4">0</data>
+      <data key="d5">2</data>
+      <data key="d6">0.0</data>
+    </edge>
+    <edge source="topic:physics/xd_circuit" target="topic:physics/surrogate_ml">
+      <data key="d4">3</data>
+      <data key="d5">1</data>
+      <data key="d6">0.018072289156626505</data>
+    </edge>
+    <edge source="topic:physics/xd_circuit" target="topic:physics/freq_sweep">
+      <data key="d4">5</data>
+      <data key="d5">2</data>
+      <data key="d6">0.01984126984126984</data>
+    </edge>
+    <edge source="topic:physics/xd_circuit" target="topic:physics/xd_mor_control">
+      <data key="d4">1</data>
+      <data key="d5">0</data>
+      <data key="d6">0.008547008547008548</data>
+    </edge>
+    <edge source="topic:physics/xd_circuit" target="topic:physics/sideband_mod">
+      <data key="d4">1</data>
+      <data key="d5">0</data>
+      <data key="d6">0.004464285714285714</data>
+    </edge>
+    <edge source="topic:physics/xd_circuit" target="topic:physics/iter_refine">
+      <data key="d4">1</data>
+      <data key="d5">1</data>
+      <data key="d6">0.007246376811594203</data>
+    </edge>
+    <edge source="topic:physics/xd_circuit" target="topic:physics/implicit_diff">
+      <data key="d4">1</data>
+      <data key="d5">0</data>
+      <data key="d6">0.0070921985815602835</data>
+    </edge>
+    <edge source="topic:physics/xd_circuit" target="topic:physics/xd_photonic_cascade">
+      <data key="d4">1</data>
+      <data key="d5">1</data>
+      <data key="d6">0.011494252873563218</data>
+    </edge>
+    <edge source="topic:physics/xd_circuit" target="topic:physics/xd_quantum_transport">
+      <data key="d4">1</data>
+      <data key="d5">0</data>
+      <data key="d6">0.00684931506849315</data>
+    </edge>
+    <edge source="topic:physics/implicit_diff" target="topic:physics/batched_sparse">
+      <data key="d4">1</data>
+      <data key="d5">0</data>
+      <data key="d6">0.008</data>
+    </edge>
+    <edge source="topic:physics/implicit_diff" target="topic:physics/surrogate_ml">
+      <data key="d4">10</data>
+      <data key="d5">16</data>
+      <data key="d6">0.04405286343612335</data>
+    </edge>
+    <edge source="topic:physics/implicit_diff" target="topic:physics/diff_optics">
+      <data key="d4">10</data>
+      <data key="d5">14</data>
+      <data key="d6">0.08196721311475409</data>
+    </edge>
+    <edge source="topic:physics/implicit_diff" target="topic:physics/jvp_transpose">
+      <data key="d4">5</data>
+      <data key="d5">4</data>
+      <data key="d6">0.03597122302158273</data>
+    </edge>
+    <edge source="topic:physics/implicit_diff" target="topic:physics/freq_sweep">
+      <data key="d4">4</data>
+      <data key="d5">5</data>
+      <data key="d6">0.012461059190031152</data>
+    </edge>
+    <edge source="topic:physics/implicit_diff" target="topic:physics/iter_recycling">
+      <data key="d4">1</data>
+      <data key="d5">1</data>
+      <data key="d6">0.007575757575757576</data>
+    </edge>
+    <edge source="topic:physics/implicit_diff" target="topic:physics/xd_power_grid">
+      <data key="d4">1</data>
+      <data key="d5">5</data>
+      <data key="d6">0.004761904761904762</data>
+    </edge>
+    <edge source="topic:physics/implicit_diff" target="topic:physics/iter_refine">
+      <data key="d4">2</data>
+      <data key="d5">0</data>
+      <data key="d6">0.00975609756097561</data>
+    </edge>
+    <edge source="topic:physics/implicit_diff" target="topic:physics/xd_mor_control">
+      <data key="d4">1</data>
+      <data key="d5">3</data>
+      <data key="d6">0.005405405405405406</data>
+    </edge>
+    <edge source="topic:physics/implicit_diff" target="topic:physics/xd_struct_dyn">
+      <data key="d4">1</data>
+      <data key="d5">1</data>
+      <data key="d6">0.008333333333333333</data>
+    </edge>
+    <edge source="topic:physics/implicit_diff" target="topic:physics/ifo_sim">
+      <data key="d4">1</data>
+      <data key="d5">4</data>
+      <data key="d6">0.004672897196261682</data>
+    </edge>
+    <edge source="topic:physics/implicit_diff" target="topic:physics/xd_fdfd_geo">
+      <data key="d4">2</data>
+      <data key="d5">14</data>
+      <data key="d6">0.009302325581395349</data>
+    </edge>
+    <edge source="topic:physics/implicit_diff" target="topic:physics/xd_photonic_cascade">
+      <data key="d4">0</data>
+      <data key="d5">3</data>
+      <data key="d6">0.0</data>
+    </edge>
+    <edge source="topic:physics/implicit_diff" target="topic:physics/xd_quantum_transport">
+      <data key="d4">0</data>
+      <data key="d5">1</data>
+      <data key="d6">0.0</data>
+    </edge>
+    <edge source="topic:physics/implicit_diff" target="topic:physics/sideband_mod">
+      <data key="d4">0</data>
+      <data key="d5">2</data>
+      <data key="d6">0.0</data>
+    </edge>
+    <edge source="topic:physics/implicit_diff" target="topic:physics/adj_quantum_cov">
+      <data key="d4">0</data>
+      <data key="d5">1</data>
+      <data key="d6">0.0</data>
+    </edge>
+    <edge source="topic:physics/implicit_diff" target="topic:physics/quantum_noise">
+      <data key="d4">0</data>
+      <data key="d5">1</data>
+      <data key="d6">0.0</data>
+    </edge>
+    <edge source="topic:physics/freq_sweep" target="topic:physics/xd_mor_control">
+      <data key="d4">64</data>
+      <data key="d5">115</data>
+      <data key="d6">0.270042194092827</data>
+    </edge>
+    <edge source="topic:physics/freq_sweep" target="topic:physics/adj_quantum_cov">
+      <data key="d4">13</data>
+      <data key="d5">12</data>
+      <data key="d6">0.05701754385964912</data>
+    </edge>
+    <edge source="topic:physics/freq_sweep" target="topic:physics/surrogate_ml">
+      <data key="d4">9</data>
+      <data key="d5">9</data>
+      <data key="d6">0.026239067055393587</data>
+    </edge>
+    <edge source="topic:physics/freq_sweep" target="topic:physics/xd_fdfd_geo">
+      <data key="d4">18</data>
+      <data key="d5">53</data>
+      <data key="d6">0.05732484076433121</data>
+    </edge>
+    <edge source="topic:physics/freq_sweep" target="topic:physics/iter_recycling">
+      <data key="d4">10</data>
+      <data key="d5">10</data>
+      <data key="d6">0.04201680672268908</data>
+    </edge>
+    <edge source="topic:physics/freq_sweep" target="topic:physics/jvp_transpose">
+      <data key="d4">6</data>
+      <data key="d5">0</data>
+      <data key="d6">0.023715415019762844</data>
+    </edge>
+    <edge source="topic:physics/freq_sweep" target="topic:physics/sideband_mod">
+      <data key="d4">1</data>
+      <data key="d5">0</data>
+      <data key="d6">0.002457002457002457</data>
+    </edge>
+    <edge source="topic:physics/freq_sweep" target="topic:physics/iter_refine">
+      <data key="d4">12</data>
+      <data key="d5">22</data>
+      <data key="d6">0.03870967741935484</data>
+    </edge>
+    <edge source="topic:physics/freq_sweep" target="topic:physics/xd_struct_dyn">
+      <data key="d4">3</data>
+      <data key="d5">6</data>
+      <data key="d6">0.012875536480686695</data>
+    </edge>
+    <edge source="topic:physics/freq_sweep" target="topic:physics/xd_power_grid">
+      <data key="d4">2</data>
+      <data key="d5">1</data>
+      <data key="d6">0.006172839506172839</data>
+    </edge>
+    <edge source="topic:physics/freq_sweep" target="topic:physics/xd_ordering_graph">
+      <data key="d4">2</data>
+      <data key="d5">7</data>
+      <data key="d6">0.006153846153846154</data>
+    </edge>
+    <edge source="topic:physics/freq_sweep" target="topic:physics/gw_detector">
+      <data key="d4">2</data>
+      <data key="d5">0</data>
+      <data key="d6">0.0053475935828877</data>
+    </edge>
+    <edge source="topic:physics/freq_sweep" target="topic:physics/ifo_sim">
+      <data key="d4">1</data>
+      <data key="d5">0</data>
+      <data key="d6">0.00303951367781155</data>
+    </edge>
+    <edge source="topic:physics/freq_sweep" target="topic:physics/xd_quantum_transport">
+      <data key="d4">3</data>
+      <data key="d5">2</data>
+      <data key="d6">0.009174311926605505</data>
+    </edge>
+    <edge source="topic:physics/freq_sweep" target="topic:physics/diff_optics">
+      <data key="d4">0</data>
+      <data key="d5">3</data>
+      <data key="d6">0.0</data>
+    </edge>
+    <edge source="topic:physics/surrogate_ml" target="topic:physics/sideband_mod">
+      <data key="d4">3</data>
+      <data key="d5">5</data>
+      <data key="d6">0.00946372239747634</data>
+    </edge>
+    <edge source="topic:physics/surrogate_ml" target="topic:physics/xd_power_grid">
+      <data key="d4">2</data>
+      <data key="d5">1</data>
+      <data key="d6">0.00847457627118644</data>
+    </edge>
+    <edge source="topic:physics/surrogate_ml" target="topic:physics/xd_photonic_cascade">
+      <data key="d4">4</data>
+      <data key="d5">7</data>
+      <data key="d6">0.0223463687150838</data>
+    </edge>
+    <edge source="topic:physics/surrogate_ml" target="topic:physics/xd_fdfd_geo">
+      <data key="d4">7</data>
+      <data key="d5">14</data>
+      <data key="d6">0.029535864978902954</data>
+    </edge>
+    <edge source="topic:physics/surrogate_ml" target="topic:physics/iter_refine">
+      <data key="d4">4</data>
+      <data key="d5">2</data>
+      <data key="d6">0.017391304347826087</data>
+    </edge>
+    <edge source="topic:physics/surrogate_ml" target="topic:physics/gw_detector">
+      <data key="d4">3</data>
+      <data key="d5">7</data>
+      <data key="d6">0.010526315789473684</data>
+    </edge>
+    <edge source="topic:physics/surrogate_ml" target="topic:physics/ifo_sim">
+      <data key="d4">1</data>
+      <data key="d5">2</data>
+      <data key="d6">0.004149377593360996</data>
+    </edge>
+    <edge source="topic:physics/surrogate_ml" target="topic:physics/diff_optics">
+      <data key="d4">3</data>
+      <data key="d5">5</data>
+      <data key="d6">0.019230769230769232</data>
+    </edge>
+    <edge source="topic:physics/surrogate_ml" target="topic:physics/xd_mor_control">
+      <data key="d4">2</data>
+      <data key="d5">4</data>
+      <data key="d6">0.009478672985781991</data>
+    </edge>
+    <edge source="topic:physics/surrogate_ml" target="topic:physics/xd_struct_dyn">
+      <data key="d4">1</data>
+      <data key="d5">2</data>
+      <data key="d6">0.006802721088435374</data>
+    </edge>
+    <edge source="topic:physics/surrogate_ml" target="topic:physics/jvp_transpose">
+      <data key="d4">0</data>
+      <data key="d5">3</data>
+      <data key="d6">0.0</data>
+    </edge>
+    <edge source="topic:physics/surrogate_ml" target="topic:physics/adj_quantum_cov">
+      <data key="d4">0</data>
+      <data key="d5">1</data>
+      <data key="d6">0.0</data>
+    </edge>
+    <edge source="topic:physics/surrogate_ml" target="topic:physics/iter_recycling">
+      <data key="d4">0</data>
+      <data key="d5">1</data>
+      <data key="d6">0.0</data>
+    </edge>
+    <edge source="topic:physics/sideband_mod" target="topic:physics/quantum_noise">
+      <data key="d4">73</data>
+      <data key="d5">230</data>
+      <data key="d6">0.25</data>
+    </edge>
+    <edge source="topic:physics/sideband_mod" target="topic:physics/jvp_transpose">
+      <data key="d4">4</data>
+      <data key="d5">6</data>
+      <data key="d6">0.017937219730941704</data>
+    </edge>
+    <edge source="topic:physics/sideband_mod" target="topic:physics/gw_detector">
+      <data key="d4">15</data>
+      <data key="d5">53</data>
+      <data key="d6">0.04559270516717325</data>
+    </edge>
+    <edge source="topic:physics/sideband_mod" target="topic:physics/xd_photonic_cascade">
+      <data key="d4">8</data>
+      <data key="d5">6</data>
+      <data key="d6">0.03463203463203463</data>
+    </edge>
+    <edge source="topic:physics/sideband_mod" target="topic:physics/iter_refine">
+      <data key="d4">1</data>
+      <data key="d5">1</data>
+      <data key="d6">0.0034602076124567475</data>
+    </edge>
+    <edge source="topic:physics/sideband_mod" target="topic:physics/ifo_sim">
+      <data key="d4">7</data>
+      <data key="d5">19</data>
+      <data key="d6">0.024054982817869417</data>
+    </edge>
+    <edge source="topic:physics/sideband_mod" target="topic:physics/diff_optics">
+      <data key="d4">1</data>
+      <data key="d5">1</data>
+      <data key="d6">0.004672897196261682</data>
+    </edge>
+    <edge source="topic:physics/sideband_mod" target="topic:physics/xd_fdfd_geo">
+      <data key="d4">3</data>
+      <data key="d5">1</data>
+      <data key="d6">0.010101010101010102</data>
+    </edge>
+    <edge source="topic:physics/sideband_mod" target="topic:physics/xd_quantum_transport">
+      <data key="d4">1</data>
+      <data key="d5">1</data>
+      <data key="d6">0.003367003367003367</data>
+    </edge>
+    <edge source="topic:physics/iter_refine" target="topic:physics/batched_sparse">
+      <data key="d4">2</data>
+      <data key="d5">1</data>
+      <data key="d6">0.01652892561983471</data>
+    </edge>
+    <edge source="topic:physics/iter_refine" target="topic:physics/xd_power_grid">
+      <data key="d4">4</data>
+      <data key="d5">16</data>
+      <data key="d6">0.0196078431372549</data>
+    </edge>
+    <edge source="topic:physics/iter_refine" target="topic:physics/iter_recycling">
+      <data key="d4">4</data>
+      <data key="d5">9</data>
+      <data key="d6">0.031746031746031744</data>
+    </edge>
+    <edge source="topic:physics/iter_refine" target="topic:physics/xd_ordering_graph">
+      <data key="d4">4</data>
+      <data key="d5">35</data>
+      <data key="d6">0.01951219512195122</data>
+    </edge>
+    <edge source="topic:physics/iter_refine" target="topic:physics/xd_fdfd_geo">
+      <data key="d4">4</data>
+      <data key="d5">10</data>
+      <data key="d6">0.01904761904761905</data>
+    </edge>
+    <edge source="topic:physics/iter_refine" target="topic:physics/xd_mor_control">
+      <data key="d4">2</data>
+      <data key="d5">6</data>
+      <data key="d6">0.011049723756906077</data>
+    </edge>
+    <edge source="topic:physics/iter_refine" target="topic:physics/xd_quantum_transport">
+      <data key="d4">2</data>
+      <data key="d5">0</data>
+      <data key="d6">0.009523809523809525</data>
+    </edge>
+    <edge source="topic:physics/iter_refine" target="topic:physics/jvp_transpose">
+      <data key="d4">0</data>
+      <data key="d5">2</data>
+      <data key="d6">0.0</data>
+    </edge>
+    <edge source="topic:physics/iter_refine" target="topic:physics/adj_quantum_cov">
+      <data key="d4">0</data>
+      <data key="d5">1</data>
+      <data key="d6">0.0</data>
+    </edge>
+    <edge source="topic:physics/diff_optics" target="topic:physics/xd_fdfd_geo">
+      <data key="d4">5</data>
+      <data key="d5">17</data>
+      <data key="d6">0.03731343283582089</data>
+    </edge>
+    <edge source="topic:physics/diff_optics" target="topic:physics/xd_photonic_cascade">
+      <data key="d4">1</data>
+      <data key="d5">3</data>
+      <data key="d6">0.012987012987012988</data>
+    </edge>
+    <edge source="topic:physics/diff_optics" target="topic:physics/ifo_sim">
+      <data key="d4">3</data>
+      <data key="d5">5</data>
+      <data key="d6">0.022388059701492536</data>
+    </edge>
+    <edge source="topic:physics/diff_optics" target="topic:physics/quantum_noise">
+      <data key="d4">0</data>
+      <data key="d5">1</data>
+      <data key="d6">0.0</data>
+    </edge>
+    <edge source="topic:physics/xd_power_grid" target="topic:physics/batched_sparse">
+      <data key="d4">5</data>
+      <data key="d5">9</data>
+      <data key="d6">0.040983606557377046</data>
+    </edge>
+    <edge source="topic:physics/xd_power_grid" target="topic:physics/jvp_transpose">
+      <data key="d4">3</data>
+      <data key="d5">5</data>
+      <data key="d6">0.02112676056338028</data>
+    </edge>
+    <edge source="topic:physics/xd_power_grid" target="topic:physics/xd_quantum_transport">
+      <data key="d4">1</data>
+      <data key="d5">0</data>
+      <data key="d6">0.004651162790697674</data>
+    </edge>
+    <edge source="topic:physics/xd_power_grid" target="topic:physics/xd_fdfd_geo">
+      <data key="d4">1</data>
+      <data key="d5">1</data>
+      <data key="d6">0.004608294930875576</data>
+    </edge>
+    <edge source="topic:physics/xd_power_grid" target="topic:physics/xd_mor_control">
+      <data key="d4">1</data>
+      <data key="d5">2</data>
+      <data key="d6">0.005376344086021506</data>
+    </edge>
+    <edge source="topic:physics/xd_power_grid" target="topic:physics/xd_ordering_graph">
+      <data key="d4">0</data>
+      <data key="d5">3</data>
+      <data key="d6">0.0</data>
+    </edge>
+    <edge source="topic:physics/xd_ordering_graph" target="topic:physics/xd_quantum_transport">
+      <data key="d4">5</data>
+      <data key="d5">20</data>
+      <data key="d6">0.02358490566037736</data>
+    </edge>
+    <edge source="topic:physics/xd_ordering_graph" target="topic:physics/jvp_transpose">
+      <data key="d4">1</data>
+      <data key="d5">1</data>
+      <data key="d6">0.006896551724137931</data>
+    </edge>
+    <edge source="topic:physics/xd_ordering_graph" target="topic:physics/xd_fdfd_geo">
+      <data key="d4">8</data>
+      <data key="d5">29</data>
+      <data key="d6">0.037914691943127965</data>
+    </edge>
+    <edge source="topic:physics/xd_ordering_graph" target="topic:physics/iter_recycling">
+      <data key="d4">2</data>
+      <data key="d5">10</data>
+      <data key="d6">0.015037593984962405</data>
+    </edge>
+    <edge source="topic:physics/xd_ordering_graph" target="topic:physics/xd_struct_dyn">
+      <data key="d4">0</data>
+      <data key="d5">1</data>
+      <data key="d6">0.0</data>
+    </edge>
+    <edge source="topic:physics/xd_ordering_graph" target="topic:physics/batched_sparse">
+      <data key="d4">0</data>
+      <data key="d5">1</data>
+      <data key="d6">0.0</data>
+    </edge>
+    <edge source="topic:physics/xd_fdfd_geo" target="topic:physics/xd_photonic_cascade">
+      <data key="d4">1</data>
+      <data key="d5">1</data>
+      <data key="d6">0.006172839506172839</data>
+    </edge>
+    <edge source="topic:physics/xd_fdfd_geo" target="topic:physics/xd_mor_control">
+      <data key="d4">1</data>
+      <data key="d5">1</data>
+      <data key="d6">0.005208333333333333</data>
+    </edge>
+    <edge source="topic:physics/xd_fdfd_geo" target="topic:physics/iter_recycling">
+      <data key="d4">1</data>
+      <data key="d5">4</data>
+      <data key="d6">0.007194244604316547</data>
+    </edge>
+    <edge source="topic:physics/xd_fdfd_geo" target="topic:physics/jvp_transpose">
+      <data key="d4">2</data>
+      <data key="d5">2</data>
+      <data key="d6">0.013422818791946308</data>
+    </edge>
+    <edge source="topic:physics/xd_fdfd_geo" target="topic:physics/xd_struct_dyn">
+      <data key="d4">1</data>
+      <data key="d5">1</data>
+      <data key="d6">0.007874015748031496</data>
+    </edge>
+    <edge source="topic:physics/xd_fdfd_geo" target="topic:physics/batched_sparse">
+      <data key="d4">1</data>
+      <data key="d5">1</data>
+      <data key="d6">0.007575757575757576</data>
+    </edge>
+    <edge source="topic:physics/xd_fdfd_geo" target="topic:physics/xd_quantum_transport">
+      <data key="d4">2</data>
+      <data key="d5">2</data>
+      <data key="d6">0.00909090909090909</data>
+    </edge>
+    <edge source="topic:physics/xd_fdfd_geo" target="topic:physics/gw_detector">
+      <data key="d4">1</data>
+      <data key="d5">0</data>
+      <data key="d6">0.003745318352059925</data>
+    </edge>
+    <edge source="topic:physics/xd_fdfd_geo" target="topic:physics/ifo_sim">
+      <data key="d4">0</data>
+      <data key="d5">3</data>
+      <data key="d6">0.0</data>
+    </edge>
+    <edge source="topic:physics/quantum_noise" target="topic:physics/gw_detector">
+      <data key="d4">55</data>
+      <data key="d5">170</data>
+      <data key="d6">0.19784172661870503</data>
+    </edge>
+    <edge source="topic:physics/quantum_noise" target="topic:physics/jvp_transpose">
+      <data key="d4">3</data>
+      <data key="d5">5</data>
+      <data key="d6">0.014084507042253521</data>
+    </edge>
+    <edge source="topic:physics/quantum_noise" target="topic:physics/ifo_sim">
+      <data key="d4">19</data>
+      <data key="d5">50</data>
+      <data key="d6">0.0708955223880597</data>
+    </edge>
+    <edge source="topic:physics/quantum_noise" target="topic:physics/xd_photonic_cascade">
+      <data key="d4">1</data>
+      <data key="d5">0</data>
+      <data key="d6">0.004405286343612335</data>
+    </edge>
+    <edge source="topic:physics/ifo_sim" target="topic:physics/gw_detector">
+      <data key="d4">26</data>
+      <data key="d5">56</data>
+      <data key="d6">0.10833333333333334</data>
+    </edge>
+    <edge source="topic:physics/ifo_sim" target="topic:physics/xd_photonic_cascade">
+      <data key="d4">1</data>
+      <data key="d5">0</data>
+      <data key="d6">0.00625</data>
+    </edge>
+    <edge source="topic:physics/jvp_transpose" target="topic:physics/iter_recycling">
+      <data key="d4">2</data>
+      <data key="d5">0</data>
+      <data key="d6">0.03076923076923077</data>
+    </edge>
+    <edge source="topic:physics/jvp_transpose" target="topic:physics/xd_mor_control">
+      <data key="d4">1</data>
+      <data key="d5">0</data>
+      <data key="d6">0.008403361344537815</data>
+    </edge>
+    <edge source="topic:physics/jvp_transpose" target="topic:physics/gw_detector">
+      <data key="d4">0</data>
+      <data key="d5">3</data>
+      <data key="d6">0.0</data>
+    </edge>
+    <edge source="topic:physics/xd_quantum_transport" target="topic:physics/xd_photonic_cascade">
+      <data key="d4">2</data>
+      <data key="d5">0</data>
+      <data key="d6">0.012578616352201259</data>
+    </edge>
+    <edge source="topic:physics/xd_quantum_transport" target="topic:physics/xd_struct_dyn">
+      <data key="d4">1</data>
+      <data key="d5">0</data>
+      <data key="d6">0.008</data>
+    </edge>
+    <edge source="topic:physics/xd_quantum_transport" target="topic:physics/iter_recycling">
+      <data key="d4">2</data>
+      <data key="d5">2</data>
+      <data key="d6">0.014705882352941176</data>
+    </edge>
+    <edge source="topic:physics/xd_quantum_transport" target="topic:physics/adj_quantum_cov">
+      <data key="d4">1</data>
+      <data key="d5">0</data>
+      <data key="d6">0.007692307692307693</data>
+    </edge>
+    <edge source="topic:physics/adj_quantum_cov" target="topic:physics/xd_mor_control">
+      <data key="d4">9</data>
+      <data key="d5">16</data>
+      <data key="d6">0.0967741935483871</data>
+    </edge>
+    <edge source="topic:physics/adj_quantum_cov" target="topic:physics/xd_struct_dyn">
+      <data key="d4">0</data>
+      <data key="d5">1</data>
+      <data key="d6">0.0</data>
+    </edge>
+    <edge source="topic:physics/xd_struct_dyn" target="topic:physics/xd_mor_control">
+      <data key="d4">1</data>
+      <data key="d5">2</data>
+      <data key="d6">0.010416666666666666</data>
+    </edge>
+    <edge source="topic:physics/xd_mor_control" target="topic:physics/gw_detector">
+      <data key="d4">1</data>
+      <data key="d5">0</data>
+      <data key="d6">0.00423728813559322</data>
+    </edge>
+    <edge source="topic:physics/xd_mor_control" target="topic:physics/iter_recycling">
+      <data key="d4">0</data>
+      <data key="d5">5</data>
+      <data key="d6">0.0</data>
+    </edge>
+  </graph>
+</graphml>

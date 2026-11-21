@@ -44,7 +44,7 @@ def main() -> int:
                 papers[pid]["probes"].append(probe_name)
 
     plist = sorted(papers.values(), key=lambda x: (x.get("created", ""), x["id"]), reverse=True)
-    print(f"Loaded {len(plist)} unique papers across {len(list(probe_dir.glob('*.jsonl')))} physics probes (2016-2026)")
+    print(f"Loaded {len(plist)} unique papers across {len(list(probe_dir.glob('*.jsonl')))} physics probes ")
 
     by_year: collections.Counter[str] = collections.Counter()
     cats: collections.Counter[str] = collections.Counter()
@@ -102,7 +102,7 @@ def main() -> int:
 
     summary = {
         "n_papers": len(plist),
-        "window": "2016-01 to 2026-11",
+        "window": f"{min((r.get('created') or '9999')[:7] for r in plist)} to {max((r.get('created') or '')[:7] for r in plist)}",
         "untagged": untagged,
         "years": dict(sorted(by_year.items())),
         "categories": dict(cats.most_common(40)),
