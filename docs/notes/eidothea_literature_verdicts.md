@@ -373,3 +373,33 @@ Why does XLA take **`14.95 s`** to compile `forward` and **`5.18 s`** to compile
 22. **Roth, J., Reinecke, M. & Enßlin, T. (2024).** *JAXbind: Bindings for High-Performance Custom Functions in JAX.* (`arXiv:2403.08847`, 8 citations) `[A, S]`.
 23. **Montoison, A., Shin, S. & Anitescu, M. (2025).** *Revisiting Sparse Matrix Coloring and Bicoloring.* (`arXiv:2505.07308`, 11 citations, Bridge Paper #13) `[A, S]`.
 24. **Hill, A. (2026).** *asdex: Fast Jacobian Sparsity Detection in Python and JAX.* (`arXiv:2610.12336`) `[A, S]`.
+
+---
+
+## 6. Implementation status (verified in the container, 1 pinned CPU)
+
+| Verdict | Status | Where |
+|---|---|---|
+| 1 — drop the 2nd quantum-noise solve (`w^H N w`) | **Done**, exact identity | `simulate._signal_and_noise_sparse` |
+| 2 — one sparse LU per frequency for all solves (fwd, `A^T`, bwd) | **Done** (content-hash LRU cache of SuperLU objects; cache miss just refactorizes) | `sparse_solve.py` |
+| 3 — values-only sparse assembly + sparse VJP (`-lam[r]·x[c]` on nonzeros) | **Done**; no `(101,751,751)` array is built or differentiated | `sparse_solve.py`, `simulate.py` |
+| 4 — noise matrix evaluated once, contracted on its nonzeros | **Done** | `simulate._signal_and_noise_sparse` |
+| 5 — kill the 19-way `vmap(lax.switch)` | **Done in reduced form**: each call site (carrier / signal / noise) dispatches over only its own 4 / 15 / 4 functions. A fully branch-free unified kernel was *not* written. | `simulate._evaluate` |
+| 6 — Schur / APF, static hoisting | **Not implemented** (the note itself ranks it secondary; static hoisting needs frequency-independence known at trace time, but `benchmark.py` passes all index arrays as traced `jit` arguments) | — |
+
+Measured on an i7-1355U pinned to 1 CPU (`benchmark.py --cpus 1`): first-run total 66.5 s after Verdicts 1-4 with the full
+19-way switch, **24.4 s** with per-site dispatch; warm forward+gradient ~0.7-1.2 s. The committed pre-change code
+(dense `(101,751,751)` assembly + sparse solve) was killed by the OOM killer in this 7.6 GB container, so there is no
+same-machine "before" number; the Xeon baseline in `benchmarks/cpu-baseline.json` is 44.2 s. The remaining cost is XLA
+compile of the signal-function branches (~10 s forward, ~3 s gradient on 1 CPU).
+
+Where this note and the code disagree (the code was followed): the noise matrix has 272 updated entries (not ~760);
+`signal_matrix` has 751×752 entries including the RHS column; the 19 component functions are not the ones listed in
+Verdict 5 (see `components.FUNCTIONS`); quantum noise is `sqrt(2·w^H N w·h·f0/4)`.
+
+Validation: `python -m pytest tests -q` (new path vs. original dense path, values + gradients, plus solver self-check),
+`benchmark.py` reference-sensitivity and finite-difference gradient checks, `start_here.py`, and
+`examples/{aligo,cavity,voyager,uifo}.py` all pass. On voyager the new noise result is bit-identical to the previously
+committed sparse solver and differs from the dense LU by 6e-5 (relative to max) — LU roundoff on an ill-conditioned
+system, not the refactor. Escape hatches: `DIFFEROMETOR_SOLVER=dense`, `DIFFEROMETOR_DISPATCH=full`.
+Assumption worth knowing: the base `noise_matrix` is empty (always true as built by `build.py`).
