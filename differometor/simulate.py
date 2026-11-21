@@ -547,6 +547,9 @@ def compress_arrays(arrays):
             "signal_changing_parameter_indices", "signal_changing_values", "parameters",
             "noise_selection_vectors", "qhd_parameter_indices", "qhd_placing_indices",
             "linked_indices", "linking_function_indices", "indices_to_link", "signal_carrier_indices")
+    # Static record (dict keys) of which LINKING_FUNCTIONS this setup uses.
+    out["linking_function_ids"] = {f"l{int(i)}": jnp.asarray(np.zeros(0, np.int8))
+                                   for i in np.unique(np.asarray(a["linking_function_indices"]))}
     return {**{key: (None if a[key] is None else jnp.asarray(a[key])) for key in keep}, **out}
 
 
@@ -670,7 +673,7 @@ def simulate_sparse_jax(
     carrier_changing_parameter_indices, carrier_changing_values,
     signal_changing_parameter_indices, signal_changing_values,
     parameters, noise_selection_vectors, qhd_parameter_indices, qhd_placing_indices,
-    linked_indices, linking_function_indices, indices_to_link, signal_carrier_indices,
+    linked_indices, linking_function_indices, indices_to_link, signal_carrier_indices, linking_function_ids,
     # compressed carrier system
     carrier_values, carrier_rows, carrier_cols, carrier_rhs_rows, carrier_size_marker, carrier_groups,
     # compressed signal system
@@ -734,7 +737,7 @@ def simulate(
     carrier_changing_parameter_indices, carrier_changing_values,
     signal_changing_parameter_indices, signal_changing_values,
     parameters, noise_selection_vectors, qhd_parameter_indices, qhd_placing_indices,
-    linked_indices, linking_function_indices, indices_to_link, signal_carrier_indices,
+    linked_indices, linking_function_indices, indices_to_link, signal_carrier_indices, linking_function_ids,
     # compressed carrier system
     carrier_values, carrier_rows, carrier_cols, carrier_rhs_rows, carrier_size_marker, carrier_groups,
     # compressed signal system

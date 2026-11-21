@@ -249,9 +249,23 @@ def _eval_eqn(eqn, values, bflags, batch_size):
         out, flag = _batched_structural(name, values, eqn.params, bflags, batch_size)
         outputs = out if eqn.primitive.multiple_results else [out]
         return [np.asarray(o) for o in outputs], [flag] * len(outputs)
+    if any(bflags):
+        # Elementwise primitives may mix per-example ranks (e.g. mul c128[4] c128[]).
+        # Right-aligned NumPy broadcasting is only correct per example, so batched
+        # operands get singleton axes between the batch axis and their own shape.
+        rank = max(len(v.aval.shape) for v in eqn.invars)
+        values = [_align(x, b, v.aval.shape, rank) for x, b, v in zip(values, bflags, eqn.invars)]
     out = _PRIMITIVES[name](*values, **eqn.params)
     outputs = out if eqn.primitive.multiple_results else [out]
     return [np.asarray(o) for o in outputs], [any(bflags)] * len(outputs)
+
+
+def _align(x, batched, shape, rank):
+    """Reshape a batched value (B, *shape) to (B, 1, ..., 1, *shape) with `rank` per-example dims."""
+    if not batched or len(shape) == rank:
+        return x
+    x = np.asarray(x)
+    return x.reshape((x.shape[0],) + (1,) * (rank - len(shape)) + tuple(shape))
 
 
 def eval_jaxpr_batched(jaxpr, consts, args, batched, batch_size):
@@ -310,7 +324,7 @@ class TracedFunction:
         self.consts = closed.consts
         self.backward = closed.jaxpr
         self.forward = _dce(closed.jaxpr, [True, False])
-        self.forward_has_ct = True  # dce keeps invars; ct input is simply unused
+        # DCE drops the unused ct invar; x stays first, so evaluation passes [x, ct] safely.
         if self.forward is None:
             self.forward = closed.jaxpr
         self.unsupported = unsupported_primitives(self.backward)
@@ -332,7 +346,10 @@ class TracedFunction:
 
     def vjp(self, x, ct):
         """Batched VJP: x (B, *in_shape), ct (B, *out_shape) -> (B, *in_shape)."""
-        return self._run(self.backward, x, np.asarray(ct))[1]
+        ct = np.asarray(ct)
+        if not np.issubdtype(np.dtype(self.out_dtype), np.complexfloating):
+            ct = np.real(ct).astype(self.out_dtype)  # JAX passes real cotangents to real outputs
+        return self._run(self.backward, x, ct)[1]
 
 
 
@@ -342,12 +359,18 @@ class _Unsupported(Exception):
 
 
 def _sum_to(ct, shape):
-    """Sum a cotangent down to `shape` (undo NumPy broadcasting)."""
+    """Sum a batched cotangent (B, *out) down to the batched operand shape (B, *s).
+
+    The per-example shape s is right-aligned with out (elementwise broadcasting):
+    extra leading per-example axes are summed, size-1 axes are summed with keepdims.
+    The batch axis is never summed.
+    """
     ct = np.asarray(ct)
-    while ct.ndim > len(shape):
-        ct = ct.sum(axis=0)
-    for axis, (have, want) in enumerate(zip(ct.shape, shape)):
-        if want == 1 and have != 1:
+    extra = ct.ndim - len(shape)
+    if extra > 0:
+        ct = ct.sum(axis=tuple(range(1, 1 + extra)))
+    for axis in range(1, len(shape)):
+        if shape[axis] == 1 and ct.shape[axis] != 1:
             ct = ct.sum(axis=axis, keepdims=True)
     return np.broadcast_to(ct, shape)
 
@@ -362,6 +385,9 @@ def _transpose_eqn(eqn, cts_out, primal, tangent_in, batch):
     shapes = [tuple(v.aval.shape) for v in eqn.invars]
     full = lambda i: (batch, *shapes[i])
     tangent_idx = [i for i, t in enumerate(tangent_in) if t]
+    rank = max(len(sh) for sh in shapes) if shapes else 0
+    raw_primal = primal
+    primal = lambda i: _align(*raw_primal(i), shapes[i], rank)  # aligned like the forward op
     if name == "split":
         pieces = [np.zeros((batch, *v.aval.shape), np.dtype(v.aval.dtype)) if c is None else c
                   for v, c in zip(eqn.outvars, cts_out)]
@@ -407,6 +433,7 @@ def _transpose_eqn(eqn, cts_out, primal, tangent_in, batch):
         if tangent_in[0]:
             raise _Unsupported("tangent predicate")
         which = np.asarray(primal(0))
+        ct = np.asarray(ct)
         which = which.astype(np.int32) if which.dtype == np.bool_ else which
         return {i: _sum_to(np.where(which == i - 1, ct, 0), full(i)) for i in tangent_idx}
     if name == "broadcast_in_dim":
@@ -498,7 +525,7 @@ class JvpTransposedFunction:
         primal_only = jcore.Jaxpr(jaxpr.constvars, [x_var], [y], self.primal_eqns)
         self.unsupported = unsupported_primitives(primal_only)
 
-    def _primal_env(self, x):
+    def _primal_env(self, x):  # returns env, batched flags, batch size
         x = np.asarray(x)
         batch = x.shape[0]
         env, flags = {}, {}
@@ -520,17 +547,20 @@ class JvpTransposedFunction:
         return y if f else np.broadcast_to(y, (batch, *np.shape(y)))
 
     def vjp(self, x, ct):
-        env, _, batch = self._primal_env(x)
+        env, flags, batch = self._primal_env(x)
         zero = np.zeros((batch, *self.in_shape), np.complex128 if np.issubdtype(self.in_dtype, np.complexfloating) else self.in_dtype)
         if not self.ydot_is_tangent:
             return zero
-        cts = {self.ydot_var: np.asarray(ct)}
+        ct = np.asarray(ct)
+        if not np.issubdtype(self.out_dtype, np.complexfloating):
+            ct = np.real(ct).astype(self.out_dtype)
+        cts = {self.ydot_var: ct}
         for eqn, tflags in reversed(self.tangent_eqns):
             outs = [cts.pop(v, None) for v in eqn.outvars]
             if all(o is None for o in outs):
                 continue
-            primal = lambda i, eqn=eqn: (eqn.invars[i].val if isinstance(eqn.invars[i], jcore.Literal)
-                                         else env[eqn.invars[i]])
+            primal = lambda i, eqn=eqn: ((eqn.invars[i].val, False) if isinstance(eqn.invars[i], jcore.Literal)
+                                         else (env[eqn.invars[i]], flags[eqn.invars[i]]))
             for i, c in _transpose_eqn(eqn, outs, primal, tflags, batch).items():
                 v = eqn.invars[i]
                 cts[v] = c if v not in cts else cts[v] + c
@@ -538,12 +568,76 @@ class JvpTransposedFunction:
         return zero if result is None else np.asarray(result).astype(zero.dtype).reshape(zero.shape)
 
 
-def trace_function(function, in_shape, dtype):
-    """JVP-transposed tracing when possible (cheaper), else forward+VJP tracing."""
+def _close(a, b, tol=1e-9):
+    a, b = np.asarray(a), np.asarray(b)
+    if a.shape != b.shape:
+        return False
+    both_nan = np.isnan(a) & np.isnan(b)
+    scale = max(float(np.nanmax(np.abs(b), initial=0.0)), 1e-300)
+    diff = np.where(both_nan, 0.0, np.abs(a - b))
+    return bool(np.all(np.isfinite(diff) | both_nan) and np.nanmax(diff, initial=0.0) <= tol * scale)
+
+
+def _self_check(traced, in_shape, dtype):
+    """Cheap NumPy-only consistency checks run once per traced function.
+
+    1. Batched evaluation (batch 11) equals batch-1 evaluation of sampled rows (forward and VJP):
+       catches batching/broadcasting errors of the interpreter.
+    2. For JVP-transposed functions, the dot-product test
+       Re<ct, J t> == Re<J^T ct, t> against JAX's JVP program, evaluated
+       independently: catches transposition errors.
+    Returns None if all checks pass, otherwise a reason string.
+    """
+    rng = np.random.default_rng(1234)
+    batch = 11
+    shape = (batch, *in_shape)
+    if np.issubdtype(np.dtype(dtype), np.complexfloating):
+        x = (rng.uniform(0.3, 1.7, shape) + 0j).astype(dtype)
+        t = (rng.normal(size=shape) + 1j * rng.normal(size=shape)).astype(dtype)
+    else:
+        x = rng.uniform(0.3, 1.7, shape).astype(dtype)
+        t = rng.normal(size=shape).astype(dtype)
     try:
-        return JvpTransposedFunction(function, in_shape, dtype)
+        with np.errstate(all="ignore"):
+            y = np.asarray(traced(x))
+            out_shape = (batch, *traced.out_shape)
+            ct = rng.normal(size=out_shape) + (1j * rng.normal(size=out_shape)
+                                               if np.issubdtype(np.dtype(traced.out_dtype), np.complexfloating) else 0)
+            g = np.asarray(traced.vjp(x, ct))
+            for i in (0, batch - 4):  # batch-1 evaluation is immune to batch-axis misalignment
+                if not _close(np.asarray(traced(x[i:i + 1]))[0], y[i]):
+                    return "batched forward mismatch"
+                if not _close(np.asarray(traced.vjp(x[i:i + 1], ct[i:i + 1]))[0], g[i]):
+                    return "batched vjp mismatch"
+            if isinstance(traced, JvpTransposedFunction):
+                outs, flags = eval_jaxpr_batched(traced.jaxpr, traced.consts, [x, t], [True, True], batch)
+                ydot = outs[1] if flags[1] else np.broadcast_to(outs[1], out_shape)
+                lhs = np.real(np.sum(np.reshape(ct, (batch, -1)) * np.reshape(ydot, (batch, -1)), axis=1))
+                rhs = np.real(np.sum(np.reshape(g, (batch, -1)) * np.reshape(t, (batch, -1)), axis=1))
+                if not _close(lhs, rhs, 1e-8):
+                    return "dot-product test failed"
+    except Exception as error:  # any interpreter failure -> unsupported
+        return f"self-check error: {type(error).__name__}"
+    return None
+
+
+def trace_function(function, in_shape, dtype):
+    """JVP-transposed tracing when possible (cheaper), else forward+VJP tracing.
+
+    Every traced function is self-checked; failures are recorded in `.unsupported`
+    so that `simulate` falls back to the in-graph JAX implementation.
+    """
+    try:
+        traced = JvpTransposedFunction(function, in_shape, dtype)
+        if _self_check(traced, in_shape, dtype) is not None:
+            raise _Unsupported("self-check")
     except _Unsupported:
-        return TracedFunction(function, in_shape, dtype)
+        traced = TracedFunction(function, in_shape, dtype)
+    if not traced.unsupported:
+        reason = _self_check(traced, in_shape, dtype)
+        if reason is not None:
+            traced.unsupported = set(traced.unsupported) | {reason}
+    return traced
 
 
 # ======================================================================
@@ -553,7 +647,7 @@ def trace_function(function, in_shape, dtype):
 class Plan:
     """Everything shape-dependent the host program needs; created while tracing `simulate`."""
 
-    def __init__(self, shapes, groups_meta, n_links):
+    def __init__(self, shapes, groups_meta, link_ids):
         self.shapes = shapes
         self.traced = {}
         self.unsupported = set()
@@ -564,12 +658,11 @@ class Plan:
                     t = trace_function(FUNCTIONS[fid], (7,), jnp.complex128)
                     self.traced[fid] = t
                     self.unsupported |= t.unsupported
-        self.links = []
-        if n_links:
-            for function in LINKING_FUNCTIONS:
-                t = trace_function(function, (), jnp.complex128)
-                self.links.append(t)
-                self.unsupported |= t.unsupported
+        self.links = {}
+        for index in link_ids:  # only the linking functions this setup references
+            t = trace_function(LINKING_FUNCTIONS[index], (), jnp.complex128)
+            self.links[index] = t
+            self.unsupported |= t.unsupported
 
     @property
     def supported(self):
@@ -1004,7 +1097,8 @@ def make_host_simulate(arrays):
     F = signal_rows_count
     shapes = dict(carrier=(CN, carrier_rows_count), signal=(SN, F), noise=jax.eval_shape(
         lambda: jnp.zeros((D, F)).squeeze()).shape)
-    plan = Plan(shapes, groups_meta, arrays["linked_indices"].shape[0])
+    link_ids = sorted(int(key[1:]) for key in arrays["linking_function_ids"])
+    plan = Plan(shapes, groups_meta, link_ids)
     if not plan.supported:
         return None, plan
 
