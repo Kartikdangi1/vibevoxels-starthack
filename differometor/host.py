@@ -81,7 +81,7 @@ def _convert(x, new_dtype, **_):
     return x.astype(new_dtype)
 
 
-def _integer_div(x, y):
+def _integer_div(x, y, **_):
     if np.issubdtype(np.asarray(x).dtype, np.integer):
         return np.trunc(np.true_divide(x, y)).astype(np.asarray(x).dtype)
     return np.true_divide(x, y)
@@ -91,7 +91,7 @@ def _split(x, sizes, axis, **_):
     return np.split(x, np.cumsum(sizes)[:-1], axis=axis)
 
 
-def _select_n(which, *cases):
+def _select_n(which, *cases, **_):
     which = np.asarray(which)
     if which.dtype == np.bool_:
         which = which.astype(np.int32)
@@ -106,12 +106,12 @@ def _dot_general(x, y, dimension_numbers, **_):
 
 
 _PRIMITIVES = {
-    "mul": lambda x, y: np.multiply(x, y),
-    "add": lambda x, y: np.add(x, y),
-    "add_any": lambda x, y: np.add(x, y),
-    "sub": lambda x, y: np.subtract(x, y),
+    "mul": lambda x, y, **_: np.multiply(x, y),
+    "add": lambda x, y, **_: np.add(x, y),
+    "add_any": lambda x, y, **_: np.add(x, y),
+    "sub": lambda x, y, **_: np.subtract(x, y),
     "div": _integer_div,
-    "neg": lambda x: np.negative(x),
+    "neg": lambda x, **_: np.negative(x),
     "exp": lambda x, **_: np.exp(x),
     "log": lambda x, **_: np.log(x),
     "sin": lambda x, **_: np.sin(x),
@@ -127,42 +127,43 @@ _PRIMITIVES = {
     "sqrt": lambda x, **_: np.sqrt(x),
     "rsqrt": lambda x, **_: 1.0 / np.sqrt(x),
     "square": lambda x, **_: np.square(x),
+    "one_minus_square": lambda x, **_: 1 - np.square(x),
     "integer_pow": lambda x, y, **_: x ** y,
     "pow": lambda x, y, **_: np.power(x, y),
-    "abs": lambda x: np.abs(x),
-    "sign": lambda x: np.sign(x),
+    "abs": lambda x, **_: np.abs(x),
+    "sign": lambda x, **_: np.sign(x),
     "conj": lambda x, **_: np.conj(x),
-    "real": lambda x: np.real(x),
-    "imag": lambda x: np.imag(x),
-    "complex": lambda x, y: x + 1j * y,
-    "max": lambda x, y: np.maximum(x, y),
-    "min": lambda x, y: np.minimum(x, y),
-    "lt": lambda x, y: np.less(x, y),
-    "le": lambda x, y: np.less_equal(x, y),
-    "gt": lambda x, y: np.greater(x, y),
-    "ge": lambda x, y: np.greater_equal(x, y),
-    "eq": lambda x, y: np.equal(x, y),
-    "ne": lambda x, y: np.not_equal(x, y),
-    "and": lambda x, y: np.logical_and(x, y) if np.asarray(x).dtype == np.bool_ else np.bitwise_and(x, y),
-    "or": lambda x, y: np.logical_or(x, y) if np.asarray(x).dtype == np.bool_ else np.bitwise_or(x, y),
-    "not": lambda x: np.logical_not(x) if np.asarray(x).dtype == np.bool_ else np.invert(x),
+    "real": lambda x, **_: np.real(x),
+    "imag": lambda x, **_: np.imag(x),
+    "complex": lambda x, y, **_: x + 1j * y,
+    "max": lambda x, y, **_: np.maximum(x, y),
+    "min": lambda x, y, **_: np.minimum(x, y),
+    "lt": lambda x, y, **_: np.less(x, y),
+    "le": lambda x, y, **_: np.less_equal(x, y),
+    "gt": lambda x, y, **_: np.greater(x, y),
+    "ge": lambda x, y, **_: np.greater_equal(x, y),
+    "eq": lambda x, y, **_: np.equal(x, y),
+    "ne": lambda x, y, **_: np.not_equal(x, y),
+    "and": lambda x, y, **_: np.logical_and(x, y) if np.asarray(x).dtype == np.bool_ else np.bitwise_and(x, y),
+    "or": lambda x, y, **_: np.logical_or(x, y) if np.asarray(x).dtype == np.bool_ else np.bitwise_or(x, y),
+    "not": lambda x, **_: np.logical_not(x) if np.asarray(x).dtype == np.bool_ else np.invert(x),
     "select_n": _select_n,
     "broadcast_in_dim": _broadcast_in_dim,
     "reshape": lambda x, new_sizes, **_: np.reshape(x, new_sizes),
-    "squeeze": lambda x, dimensions: np.squeeze(x, axis=tuple(dimensions)),
-    "expand_dims": lambda x, dimensions: np.expand_dims(x, tuple(dimensions)),
+    "squeeze": lambda x, dimensions, **_: np.squeeze(x, axis=tuple(dimensions)),
+    "expand_dims": lambda x, dimensions, **_: np.expand_dims(x, tuple(dimensions)),
     "slice": _slice,
     "pad": _pad,
-    "concatenate": lambda *xs, dimension: np.concatenate(xs, axis=dimension),
+    "concatenate": lambda *xs, dimension, **_: np.concatenate(xs, axis=dimension),
     "split": _split,
-    "transpose": lambda x, permutation: np.transpose(x, permutation),
+    "transpose": lambda x, permutation, **_: np.transpose(x, permutation),
     "reduce_sum": lambda x, axes, **_: np.sum(x, axis=tuple(axes)),
     "reduce_max": lambda x, axes, **_: np.max(x, axis=tuple(axes)),
     "reduce_min": lambda x, axes, **_: np.min(x, axis=tuple(axes)),
     "convert_element_type": _convert,
-    "copy": lambda x: np.array(x),
-    "copy_p": lambda x: np.array(x),
-    "stop_gradient": lambda x: x,
+    "copy": lambda x, **_: np.array(x),
+    "copy_p": lambda x, **_: np.array(x),
+    "stop_gradient": lambda x, **_: x,
     "dot_general": _dot_general,
 }
 _CALL_PRIMITIVES = {"pjit", "jit", "closed_call", "core_call", "custom_jvp_call", "custom_vjp_call", "remat", "checkpoint"}
@@ -344,12 +345,18 @@ class TracedFunction:
         """Batched forward: x (B, *in_shape) -> (B, *out_shape)."""
         return self._run(self.forward, x, None)[0]
 
+    def forward_with_cache(self, x):
+        return self(x), x
+
     def vjp(self, x, ct):
         """Batched VJP: x (B, *in_shape), ct (B, *out_shape) -> (B, *in_shape)."""
         ct = np.asarray(ct)
         if not np.issubdtype(np.dtype(self.out_dtype), np.complexfloating):
             ct = np.real(ct).astype(self.out_dtype)  # JAX passes real cotangents to real outputs
         return self._run(self.backward, x, ct)[1]
+
+    def vjp_from_cache(self, cache, ct):
+        return self.vjp(cache, ct)
 
 
 
@@ -532,22 +539,30 @@ class JvpTransposedFunction:
         for v, c in zip(self.jaxpr.constvars, self.consts):
             env[v], flags[v] = np.asarray(c), False
         env[self.x_var], flags[self.x_var] = x, True
-        for eqn in self.primal_eqns:
-            values = [v.val if isinstance(v, jcore.Literal) else env[v] for v in eqn.invars]
-            bflags = [False if isinstance(v, jcore.Literal) else flags[v] for v in eqn.invars]
-            outs, oflags = _eval_eqn(eqn, values, bflags, batch)
-            for v, o, f in zip(eqn.outvars, outs, oflags):
-                env[v], flags[v] = o, f
+        with np.errstate(all="ignore"):
+            for eqn in self.primal_eqns:
+                values = [v.val if isinstance(v, jcore.Literal) else env[v] for v in eqn.invars]
+                bflags = [False if isinstance(v, jcore.Literal) else flags[v] for v in eqn.invars]
+                outs, oflags = _eval_eqn(eqn, values, bflags, batch)
+                for v, o, f in zip(eqn.outvars, outs, oflags):
+                    env[v], flags[v] = o, f
         return env, flags, batch
 
     def __call__(self, x):
+        return self.forward_with_cache(x)[0]
+
+    def forward_with_cache(self, x):
         env, flags, batch = self._primal_env(x)
         y = self.y_var.val if isinstance(self.y_var, jcore.Literal) else env[self.y_var]
         f = False if isinstance(self.y_var, jcore.Literal) else flags[self.y_var]
-        return y if f else np.broadcast_to(y, (batch, *np.shape(y)))
+        out = y if f else np.broadcast_to(y, (batch, *np.shape(y)))
+        return out, (env, flags, batch)
 
     def vjp(self, x, ct):
-        env, flags, batch = self._primal_env(x)
+        return self.vjp_from_cache(self._primal_env(x), ct)
+
+    def vjp_from_cache(self, cache, ct):
+        env, flags, batch = cache
         zero = np.zeros((batch, *self.in_shape), np.complex128 if np.issubdtype(self.in_dtype, np.complexfloating) else self.in_dtype)
         if not self.ydot_is_tangent:
             return zero
@@ -555,15 +570,16 @@ class JvpTransposedFunction:
         if not np.issubdtype(self.out_dtype, np.complexfloating):
             ct = np.real(ct).astype(self.out_dtype)
         cts = {self.ydot_var: ct}
-        for eqn, tflags in reversed(self.tangent_eqns):
-            outs = [cts.pop(v, None) for v in eqn.outvars]
-            if all(o is None for o in outs):
-                continue
-            primal = lambda i, eqn=eqn: ((eqn.invars[i].val, False) if isinstance(eqn.invars[i], jcore.Literal)
-                                         else (env[eqn.invars[i]], flags[eqn.invars[i]]))
-            for i, c in _transpose_eqn(eqn, outs, primal, tflags, batch).items():
-                v = eqn.invars[i]
-                cts[v] = c if v not in cts else cts[v] + c
+        with np.errstate(all="ignore"):
+            for eqn, tflags in reversed(self.tangent_eqns):
+                outs = [cts.pop(v, None) for v in eqn.outvars]
+                if all(o is None for o in outs):
+                    continue
+                primal = lambda i, eqn=eqn: ((eqn.invars[i].val, False) if isinstance(eqn.invars[i], jcore.Literal)
+                                             else (env[eqn.invars[i]], flags[eqn.invars[i]]))
+                for i, c in _transpose_eqn(eqn, outs, primal, tflags, batch).items():
+                    v = eqn.invars[i]
+                    cts[v] = c if v not in cts else cts[v] + c
         result = cts.get(self.t_var)
         return zero if result is None else np.asarray(result).astype(zero.dtype).reshape(zero.shape)
 
@@ -621,12 +637,20 @@ def _self_check(traced, in_shape, dtype):
     return None
 
 
+_TRACE_CACHE = {}
+
+
 def trace_function(function, in_shape, dtype):
     """JVP-transposed tracing when possible (cheaper), else forward+VJP tracing.
 
-    Every traced function is self-checked; failures are recorded in `.unsupported`
-    so that `simulate` falls back to the in-graph JAX implementation.
+    Every traced function is self-checked once and cached by (function, in_shape, dtype);
+    failures are recorded in `.unsupported` so that `simulate` falls back to the
+    in-graph JAX implementation.
     """
+    key = (function, tuple(in_shape), np.dtype(dtype))
+    cached = _TRACE_CACHE.get(key)
+    if cached is not None:
+        return cached
     try:
         traced = JvpTransposedFunction(function, in_shape, dtype)
         if _self_check(traced, in_shape, dtype) is not None:
@@ -637,6 +661,7 @@ def trace_function(function, in_shape, dtype):
         reason = _self_check(traced, in_shape, dtype)
         if reason is not None:
             traced.unsupported = set(traced.unsupported) | {reason}
+    _TRACE_CACHE[key] = traced
     return traced
 
 
@@ -651,6 +676,7 @@ class Plan:
         self.shapes = shapes
         self.traced = {}
         self.unsupported = set()
+        self._last_a = None
         for groups in groups_meta.values():
             for key in groups:
                 fid = int(key[1:])
@@ -674,7 +700,7 @@ class Plan:
 # ======================================================================
 
 _RESIDUALS = OrderedDict()
-_RESIDUAL_SLOTS = 2
+_RESIDUAL_SLOTS = 8
 _TOKEN = [0]
 
 
@@ -692,6 +718,8 @@ def _expand(array, indices, values):
 def _expand_backward(ct_out, source, set_positions, n_source_rows):
     ct = np.array(ct_out)
     ct[set_positions] = 0
+    if n_source_rows == 1:
+        return ct.sum(axis=0, keepdims=True)
     ct_in = np.zeros((n_source_rows, ct.shape[1]), ct.dtype)
     np.add.at(ct_in, source, ct)
     return ct_in
@@ -711,16 +739,17 @@ def _assemble(plan, parameters, base, groups):
             gathered = np.pad(gathered, ((0, 0), (0, 0), (0, 7 - gathered.shape[-1])))
         inputs = gathered.reshape(-1, 7)  # (R*K, 7)
         traced = plan.traced[fid]
-        out = traced(inputs).reshape(evaluated_rows, g["inputs"].shape[0], -1)
+        raw_out, cache = traced.forward_with_cache(inputs)
+        out = raw_out.reshape(evaluated_rows, g["inputs"].shape[0], -1)
         values[:, g["k"]] = out[:, g["rows"], g["slots"]]
-        saved.append((key, inputs, out.shape))
+        saved.append((key, cache, inputs.shape[0], out.shape))
     return values.astype(np.complex128), saved
 
 
 def _assemble_backward(plan, ct_values, groups, saved, parameters_shape):
     """Adjoint of `_assemble` w.r.t. parameters (R, P). ct_values is consumed."""
     ct_parameters = np.zeros(parameters_shape, np.complex128)
-    for (key, inputs, out_shape) in saved:
+    for (key, cache, n_batch, out_shape) in saved:
         g = groups[key]
         fid = int(key[1:])
         ct_out = np.zeros(out_shape, np.complex128)
@@ -728,20 +757,25 @@ def _assemble_backward(plan, ct_values, groups, saved, parameters_shape):
         if key[0] == "c":  # broadcast over rows -> sum of row cotangents
             ct_group = ct_group.sum(axis=0, keepdims=True)
         np.add.at(ct_out, (slice(None), g["rows"], g["slots"]), ct_group)
-        ct_in = plan.traced[fid].vjp(inputs, ct_out.reshape(inputs.shape[0], -1))
-        ct_in = np.asarray(ct_in).reshape(out_shape[0], g["inputs"].shape[0], 7)[..., : g["inputs"].shape[1]]
-        rows = np.arange(out_shape[0])[:, None, None]
-        np.add.at(ct_parameters, (np.broadcast_to(rows, ct_in.shape), np.broadcast_to(g["inputs"][None], ct_in.shape)), ct_in)
+        ct_in = plan.traced[fid].vjp_from_cache(cache, ct_out.reshape(n_batch, -1))
+        width = g["inputs"].shape[1]
+        ct_in = np.asarray(ct_in).reshape(out_shape[0], g["inputs"].shape[0], 7)[..., :width]
+        if out_shape[0] == 1:
+            np.add.at(ct_parameters[0], g["inputs"], ct_in[0])
+        else:
+            rows = np.arange(out_shape[0])[:, None, None]
+            np.add.at(ct_parameters, (np.broadcast_to(rows, ct_in.shape), np.broadcast_to(g["inputs"][None], ct_in.shape)), ct_in)
     return ct_parameters
 
 
 _SUPERLU = []
+_DLL_DIRS = []
 
 
 def _superlu():
     """SciPy's SuperLU extension module (`scipy.sparse.linalg._dsolve._superlu`).
 
-    Importing `scipy.sparse.linalg` costs ~0.1 s, almost all of it unrelated to
+    Importing `scipy.sparse.linalg` costs ~0.5 s, almost all of it unrelated to
     SuperLU. The compiled extension only needs NumPy, so it is loaded directly and
     registered under its real name (a later `import scipy.sparse.linalg` reuses it).
     Falls back to the regular import if the layout differs.
@@ -754,6 +788,11 @@ def _superlu():
                 import glob
                 import importlib.util
                 scipy_dir = os.path.dirname(importlib.util.find_spec("scipy").origin)
+                if os.name == "nt":
+                    for candidate in (os.path.join(os.path.dirname(scipy_dir), "scipy.libs"),
+                                      os.path.join(scipy_dir, ".libs")):
+                        if os.path.isdir(candidate):
+                            _DLL_DIRS.append(os.add_dll_directory(candidate))
                 (path,) = glob.glob(os.path.join(scipy_dir, "sparse", "linalg", "_dsolve", "_superlu*.so")) or \
                     glob.glob(os.path.join(scipy_dir, "sparse", "linalg", "_dsolve", "_superlu*.pyd"))
                 spec = importlib.util.spec_from_file_location(name, path)
@@ -774,14 +813,17 @@ def _csc_construct(*args, **kwargs):  # only used if SuperLU.L / .U are requeste
 class SparsePattern:
     """Fixed sparsity pattern (rows, cols) of an n x n matrix in sorted CSC order."""
 
-    def __init__(self, rows, cols, n):
+    def __init__(self, rows, cols, n, order=None, indices=None, indptr=None):
         rows = np.asarray(rows, np.int64)
         cols = np.asarray(cols, np.int64)
         self.n, self.rows, self.cols = n, rows, cols
-        self.order = np.lexsort((rows, cols))  # by column, then row (canonical CSC)
-        self.indices = np.ascontiguousarray(rows[self.order], dtype=np.intc)
-        self.indptr = np.ascontiguousarray(
-            np.concatenate([[0], np.cumsum(np.bincount(cols, minlength=n))]), dtype=np.intc)
+        if order is None:
+            self.order = np.lexsort((rows, cols))  # by column, then row (canonical CSC)
+            self.indices = np.ascontiguousarray(rows[self.order], dtype=np.intc)
+            self.indptr = np.ascontiguousarray(
+                np.concatenate([[0], np.cumsum(np.bincount(cols, minlength=n))]), dtype=np.intc)
+        else:
+            self.order, self.indices, self.indptr = order, indices, indptr
 
     def matvec(self, values, x, trans):
         """A x (trans 'N'), A^T x ('T') or A^H x ('H') for x of shape (n,) or (n, k)."""
@@ -810,6 +852,31 @@ def _pattern(rows, cols, n):
     return pattern
 
 
+_SPARSETOOLS = []
+
+
+def _sparsetools():
+    if not _SPARSETOOLS:
+        name = "scipy.sparse._sparsetools"
+        module = sys.modules.get(name)
+        if module is None:
+            try:
+                import glob
+                import importlib.util
+                scipy_dir = os.path.dirname(importlib.util.find_spec("scipy").origin)
+                _superlu()  # ensures DLL directory is registered on Windows
+                (path,) = glob.glob(os.path.join(scipy_dir, "sparse", "_sparsetools*.so")) or \
+                    glob.glob(os.path.join(scipy_dir, "sparse", "_sparsetools*.pyd"))
+                spec = importlib.util.spec_from_file_location(name, path)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                sys.modules[name] = module
+            except Exception:
+                from scipy.sparse import _sparsetools as module
+        _SPARSETOOLS.append(module)
+    return _SPARSETOOLS[0]
+
+
 class RefinedLU:
     """SuperLU factorisation of a sparse A with one step of iterative refinement.
 
@@ -823,18 +890,34 @@ class RefinedLU:
     Factorisation options are SuperLU's defaults, exactly as `scipy.sparse.linalg.splu`.
     """
 
-    def __init__(self, values, rows, cols, n, refine=1):
-        self.pattern = _pattern(rows, cols, n)
+    def __init__(self, values, rows, cols, n, refine=1, pattern=None):
+        self.pattern = _pattern(rows, cols, n) if pattern is None else pattern
         self.values = np.asarray(values, dtype=np.complex128)
         self.refine = refine
-        data = np.ascontiguousarray(self.values[self.pattern.order])
+        self.data = np.ascontiguousarray(self.values[self.pattern.order])
         try:
             self.lu = _superlu().gstrf(
-                n, data.shape[0], data, self.pattern.indices, self.pattern.indptr,
+                n, self.data.shape[0], self.data, self.pattern.indices, self.pattern.indptr,
                 csc_construct_func=_csc_construct, ilu=False,
                 options=dict(DiagPivotThresh=None, ColPerm=None, PanelSize=None, Relax=None))
         except RuntimeError:  # exactly singular
             self.lu = None
+
+    def _matvec(self, x, trans):
+        st = _sparsetools()
+        n = self.pattern.n
+        indptr, indices, data = self.pattern.indptr, self.pattern.indices, self.data
+        if x.ndim == 1:
+            out = np.zeros(n, dtype=np.complex128)
+            if trans == "N":
+                st.csc_matvec(n, n, indptr, indices, data, np.ascontiguousarray(x), out)
+            elif trans == "T":
+                st.csr_matvec(n, n, indptr, indices, data, np.ascontiguousarray(x), out)
+            else:
+                st.csr_matvec(n, n, indptr, indices, data, np.ascontiguousarray(np.conj(x)), out)
+                np.conj(out, out=out)
+            return out
+        return np.stack([self._matvec(x[:, k], trans) for k in range(x.shape[1])], axis=1)
 
     def solve(self, b, trans="N"):
         b = np.asarray(b, dtype=np.complex128)
@@ -842,7 +925,7 @@ class RefinedLU:
             return np.full(b.shape, np.nan + 1j * np.nan)
         x = self.lu.solve(b, trans=trans)
         for _ in range(self.refine):
-            x = x + self.lu.solve(b - self.pattern.matvec(self.values, x, trans), trans=trans)
+            x = x + self.lu.solve(b - self._matvec(x, trans), trans=trans)
         return x
 
 
@@ -866,16 +949,31 @@ class BatchedLU:
     def __init__(self, values, rows, cols, n):
         values = np.asarray(values, dtype=np.complex128)
         self.F, self.n = values.shape[0], n
-        key = (n, self.F, hash(np.asarray(rows).tobytes()), hash(np.asarray(cols).tobytes()))
-        big = _BATCHED_PATTERNS.get(key)
-        if big is None:
-            offsets = (np.arange(self.F) * n)[:, None]
-            big = _BATCHED_PATTERNS[key] = (
-                (np.asarray(rows)[None, :] + offsets).reshape(-1), (np.asarray(cols)[None, :] + offsets).reshape(-1))
+        small = _pattern(rows, cols, n)
+        if self.F == 1:
+            self.parts = None
+            self.lu = RefinedLU(values[0], rows, cols, n, pattern=small)
+            if self.lu.lu is None:
+                self.parts = [self.lu]
+            return
+        key = (id(small), self.F)
+        big_pat = _BATCHED_PATTERNS.get(key)
+        if big_pat is None:
+            nnz = small.order.shape[0]
+            offsets = (np.arange(self.F, dtype=np.int64) * n)[:, None]
+            big_rows = (small.rows[None, :] + offsets).reshape(-1)
+            big_cols = (small.cols[None, :] + offsets).reshape(-1)
+            order = (small.order[None, :] + (np.arange(self.F, dtype=np.int64) * nnz)[:, None]).reshape(-1)
+            f_intc = np.arange(self.F, dtype=np.intc)[:, None]
+            indices = np.ascontiguousarray((small.indices[None, :] + f_intc * n).reshape(-1), dtype=np.intc)
+            indptr = np.empty(self.F * n + 1, dtype=np.intc)
+            indptr[0] = 0
+            indptr[1:] = (small.indptr[1:][None, :] + f_intc * nnz).reshape(-1)
+            big_pat = _BATCHED_PATTERNS[key] = SparsePattern(big_rows, big_cols, self.F * n, order, indices, indptr)
         self.parts = None
-        self.lu = RefinedLU(values.reshape(-1), big[0], big[1], self.F * n) if self.F > 1 else None
-        if self.lu is None or self.lu.lu is None:
-            self.parts = [RefinedLU(values[f], rows, cols, n) for f in range(self.F)]
+        self.lu = RefinedLU(values.reshape(-1), big_pat.rows, big_pat.cols, self.F * n, pattern=big_pat)
+        if self.lu.lu is None:
+            self.parts = [RefinedLU(values[f], rows, cols, n, pattern=small) for f in range(self.F)]
 
     def solve(self, b, trans="N"):
         b = np.asarray(b, dtype=np.complex128)
@@ -883,7 +981,7 @@ class BatchedLU:
             return np.zeros(b.shape, np.complex128)
         if self.parts is not None:
             return np.stack([lu.solve(b[f], trans) for f, lu in enumerate(self.parts)])
-        flat = b.reshape(self.F * self.n, *b.shape[2:])
+        flat = b.reshape(self.F * self.n, *b.shape[2:]) if self.F > 1 else b[0]
         return self.lu.solve(np.ascontiguousarray(flat), trans).reshape(b.shape)
 
 
@@ -947,7 +1045,9 @@ def _forward(plan, a):
     w = np.ascontiguousarray(np.transpose(lus_s.solve(np.transpose(c, (0, 2, 1)), trans="H"), (0, 2, 1)))  # (F, D, SN)
 
     # quantum noise
-    nvals, saved_n = _assemble(plan, Ps, a["noise_values"], a["noise_groups"])
+    noise_const = all(k[0] == "c" for k in a["noise_groups"])
+    Pn = P if noise_const else Ps
+    nvals, saved_n = _assemble(plan, Pn, a["noise_values"], a["noise_groups"])
     nr, nc = a["noise_rows"], a["noise_cols"]
     wr_conj = np.conj(w[:, :, nr])
     wc = w[:, :, nc]
@@ -957,7 +1057,7 @@ def _forward(plan, a):
     r.update(Pc=Pc, src_c=src_c, set_c=set_c, saved_c=saved_c, lus_c=lus_c, carrier=carrier,
              Ps=Ps, src_s=src_s, set_s=set_s, saved_s=saved_s, placed_before=placed_before,
              svals=svals, nsv=nsv, nsv_t=nsv_t, qhd=qhd, lus_s=lus_s, signal=signal, w=w,
-             nvals=nvals, saved_n=saved_n, wr_conj=wr_conj, wc=wc, noise=noise)
+             nvals=nvals, saved_n=saved_n, noise_const=noise_const, wr_conj=wr_conj, wc=wc, noise=noise)
     return carrier.T, signal.T, noise, r
 
 
@@ -977,7 +1077,7 @@ def _backward(plan, a, r, ct_carrier_T, ct_signal_T, ct_noise):
     nr, nc = a["noise_rows"], a["noise_cols"]
     nvals, wr_conj, wc = r["nvals"], r["wr_conj"], r["wc"]
     ct_s = ct_q[:, :, None]  # ct of the complex sum terms (real)
-    ct_nvals = np.sum(ct_s * wr_conj * wc, axis=1)  # (F, nnzN)
+    ct_nvals = np.sum(ct_s * wr_conj * wc, axis=(0, 1))[None, :] if r["noise_const"] else np.sum(ct_s * wr_conj * wc, axis=1)
     ct_w = np.zeros((F, D, SN), np.complex128)
     np.add.at(ct_w, (slice(None), slice(None), nr), np.conj(ct_s * nvals[:, None, :] * wc))
     np.add.at(ct_w, (slice(None), slice(None), nc), ct_s * nvals[:, None, :] * wr_conj)
@@ -1027,7 +1127,10 @@ def _backward(plan, a, r, ct_carrier_T, ct_signal_T, ct_noise):
 
     # signal + noise assembly -> signal-expanded parameters
     ct_Ps = _assemble_backward(plan, ct_svals, a["signal_groups"], r["saved_s"], r["Ps"].shape)
-    ct_Ps += _assemble_backward(plan, ct_nvals, a["noise_groups"], r["saved_n"], r["Ps"].shape)
+    if r["noise_const"]:
+        ct_P0 += _assemble_backward(plan, ct_nvals, a["noise_groups"], r["saved_n"], r["P0"].shape)
+    else:
+        ct_Ps += _assemble_backward(plan, ct_nvals, a["noise_groups"], r["saved_n"], r["Ps"].shape)
     ct_Pc = _expand_backward(ct_Ps, r["src_s"], r["set_s"], r["Pc"].shape[0])
 
     # carrier solve
@@ -1066,21 +1169,23 @@ def _to_numpy(tree):
 
 def _host_forward(plan, flat_arrays, treedef):
     a = _to_numpy(jax.tree_util.tree_unflatten(treedef, flat_arrays))
+    plan._last_a = a
     carrier_T, signal_T, noise, residuals = _forward(plan, a)
     _TOKEN[0] += 1
     token = _TOKEN[0]
-    _RESIDUALS[token] = (residuals, a["optimized_parameters"].copy())
+    _RESIDUALS[token] = (residuals, a)
     while len(_RESIDUALS) > _RESIDUAL_SLOTS:
         _RESIDUALS.popitem(last=False)
     return carrier_T, signal_T, noise.reshape(plan.shapes["noise"]), np.int64(token)
 
 
-def _host_backward(plan, token, flat_arrays, treedef, ct_carrier, ct_signal, ct_noise):
-    a = _to_numpy(jax.tree_util.tree_unflatten(treedef, flat_arrays))
+def _host_backward_token(plan, token, optimized_parameters, ct_carrier, ct_signal, ct_noise):
+    p = np.asarray(optimized_parameters)
     cached = _RESIDUALS.get(int(token))
-    if cached is not None and np.array_equal(cached[1], a["optimized_parameters"]):
-        residuals = cached[0]
+    if cached is not None and np.array_equal(cached[1]["optimized_parameters"], p):
+        residuals, a = cached
     else:  # recompute deterministically
+        a = dict(plan._last_a, optimized_parameters=p)
         residuals = _forward(plan, a)[3]
     return _backward(plan, a, residuals, np.asarray(ct_carrier), np.asarray(ct_signal), np.asarray(ct_noise))
 
@@ -1098,57 +1203,43 @@ def make_host_simulate(arrays):
     SN = arrays["noise_selection_vectors"].shape[2]
     D = arrays["noise_selection_vectors"].shape[0]
     F = signal_rows_count
-    shapes = dict(carrier=(CN, carrier_rows_count), signal=(SN, F), noise=jax.eval_shape(
-        lambda: jnp.zeros((D, F)).squeeze()).shape)
+    shapes = dict(carrier=(CN, carrier_rows_count), signal=(SN, F), noise=(F,) if D == 1 and F > 1 else (
+        () if D == 1 and F == 1 else (D,) if F == 1 else (D, F)))
     link_ids = sorted(int(key[1:]) for key in arrays["linking_function_ids"])
     plan = Plan(shapes, groups_meta, link_ids)
     if not plan.supported:
         return None, plan
 
+    rest = {key: value for key, value in arrays.items() if key != "optimized_parameters"}
     out_shapes = (jax.ShapeDtypeStruct(shapes["carrier"], jnp.complex128),
                   jax.ShapeDtypeStruct(shapes["signal"], jnp.complex128),
                   jax.ShapeDtypeStruct(shapes["noise"], jnp.float64),
                   jax.ShapeDtypeStruct((), jnp.int64))
 
-    def run_forward(optimized_parameters, rest):
+    def run_forward(optimized_parameters):
         tree = dict(rest, optimized_parameters=optimized_parameters)
         flat, treedef = jax.tree_util.tree_flatten(tree)
         return jax.pure_callback(partial(_host_forward_flat, plan, treedef), out_shapes, *flat,
                                  vmap_method="sequential")
 
     @jax.custom_vjp
-    def host_simulate(optimized_parameters, rest):
-        return run_forward(optimized_parameters, rest)[:3]
+    def host_simulate(optimized_parameters):
+        return run_forward(optimized_parameters)[:3]
 
-    def fwd(optimized_parameters, rest):
-        carrier_T, signal_T, noise, token = run_forward(optimized_parameters, rest)
-        return (carrier_T, signal_T, noise), (token, optimized_parameters, rest)
+    def fwd(optimized_parameters):
+        carrier_T, signal_T, noise, token = run_forward(optimized_parameters)
+        return (carrier_T, signal_T, noise), (token, optimized_parameters)
 
     def bwd(residuals, cotangents):
-        token, optimized_parameters, rest = residuals
-        tree = dict(rest, optimized_parameters=optimized_parameters)
-        flat, treedef = jax.tree_util.tree_flatten(tree)
-        ct_p = jax.pure_callback(partial(_host_backward_flat, plan, treedef, len(flat)),
+        token, optimized_parameters = residuals
+        ct_p = jax.pure_callback(partial(_host_backward_token, plan),
                                  jax.ShapeDtypeStruct(optimized_parameters.shape, jnp.float64),
-                                 token, *flat, *cotangents, vmap_method="sequential")
-        zeros = jax.tree_util.tree_map(_zero_cotangent, rest)
-        return ct_p.astype(optimized_parameters.dtype), zeros
+                                 token, optimized_parameters, *cotangents, vmap_method="sequential")
+        return (ct_p.astype(optimized_parameters.dtype),)
 
     host_simulate.defvjp(fwd, bwd)
     return host_simulate, plan
 
 
-def _zero_cotangent(x):
-    x = jnp.asarray(x)
-    if jnp.issubdtype(x.dtype, jnp.inexact):
-        return jnp.zeros_like(x)
-    return np.zeros(x.shape, dtype=jax.dtypes.float0)
-
-
 def _host_forward_flat(plan, treedef, *flat):
     return _host_forward(plan, flat, treedef)
-
-
-def _host_backward_flat(plan, treedef, n_flat, token, *rest):
-    flat, cts = rest[:n_flat], rest[n_flat:]
-    return _host_backward(plan, token, flat, treedef, *cts)

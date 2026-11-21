@@ -462,6 +462,15 @@ def _matrix_first(r, c, v, ks, n):
     return r[order], c[order], v[order], [inverse[k] for k in ks], int(np.sum(c < n))
 
 
+def _put(x, dtype=None):
+    if x is None:
+        return None
+    a = np.asarray(x, dtype=dtype)
+    if dtype is None and np.issubdtype(a.dtype, np.integer) and a.dtype != np.int64 and a.dtype != np.int8:
+        a = a.astype(np.int64)
+    return jax.device_put(np.ascontiguousarray(a))
+
+
 def _group_functions(function_input_indices, function_indices, output_indices, flat_indices, swept):
     """Group component-function evaluations by function type and sweep dependence.
 
@@ -490,8 +499,8 @@ def _group_functions(function_input_indices, function_indices, output_indices, f
                 continue
             local = np.searchsorted(rows_g, out[0, sel])
             groups[f"{tag}{int(g):02d}"] = dict(
-                inputs=jnp.asarray(fin[rows_g]), rows=jnp.asarray(local),
-                slots=jnp.asarray(out[1, sel]), k=jnp.asarray(k[sel]),
+                inputs=_put(fin[rows_g], np.int64), rows=_put(local, np.int64),
+                slots=_put(out[1, sel], np.int64), k=_put(k[sel], np.int64),
             )
     return groups
 
@@ -512,9 +521,9 @@ def compress_arrays(arrays):
     cn = carrier_matrix.shape[0]
     r, c, v, ks, na = _matrix_first(*_compress(carrier_matrix, [a["carrier_matrix_indices"]]), cn)
     out.update(
-        carrier_values=jnp.asarray(v.astype(np.complex128)), carrier_rows=jnp.asarray(r[:na]),
-        carrier_cols=jnp.asarray(c[:na]), carrier_rhs_rows=jnp.asarray(r[na:]),
-        carrier_size_marker=jnp.asarray(np.zeros(cn, np.int8)),
+        carrier_values=_put(v, np.complex128), carrier_rows=_put(r[:na], np.int64),
+        carrier_cols=_put(c[:na], np.int64), carrier_rhs_rows=_put(r[na:], np.int64),
+        carrier_size_marker=_put(np.zeros(cn, np.int8), np.int8),
         carrier_groups=_group_functions(a["carrier_function_input_indices"], a["carrier_function_indices"],
                                         a["carrier_output_indices"], ks[0], swept),
     )
@@ -527,9 +536,9 @@ def compress_arrays(arrays):
             | ((r >= 2 * cn) & (c < cn))
             | ((r >= cn) & (r < 2 * cn) & (c >= 2 * cn)))
     out.update(
-        signal_values=jnp.asarray(v.astype(np.complex128)), signal_rows=jnp.asarray(r[:na]),
-        signal_cols=jnp.asarray(c[:na]), signal_rhs_rows=jnp.asarray(r[na:]),
-        signal_place_k=jnp.asarray(ks[1]), signal_conj_mask=jnp.asarray(conj),
+        signal_values=_put(v, np.complex128), signal_rows=_put(r[:na], np.int64),
+        signal_cols=_put(c[:na], np.int64), signal_rhs_rows=_put(r[na:], np.int64),
+        signal_place_k=_put(ks[1], np.int64), signal_conj_mask=_put(conj),
         signal_groups=_group_functions(a["signal_function_input_indices"], a["signal_function_indices"],
                                        a["signal_output_indices"], ks[0], swept),
     )
@@ -537,7 +546,7 @@ def compress_arrays(arrays):
     noise_matrix = np.asarray(a["noise_matrix"])
     r, c, v, ks = _compress(noise_matrix, [a["noise_system_matrix_indices"]])
     out.update(
-        noise_values=jnp.asarray(v.astype(np.complex128)), noise_rows=jnp.asarray(r), noise_cols=jnp.asarray(c),
+        noise_values=_put(v, np.complex128), noise_rows=_put(r, np.int64), noise_cols=_put(c, np.int64),
         noise_groups=_group_functions(a["noise_function_input_indices"], a["noise_function_indices"],
                                       a["noise_output_indices"], ks[0], swept),
     )
@@ -548,9 +557,9 @@ def compress_arrays(arrays):
             "noise_selection_vectors", "qhd_parameter_indices", "qhd_placing_indices",
             "linked_indices", "linking_function_indices", "indices_to_link", "signal_carrier_indices")
     # Static record (dict keys) of which LINKING_FUNCTIONS this setup uses.
-    out["linking_function_ids"] = {f"l{int(i)}": jnp.asarray(np.zeros(0, np.int8))
+    out["linking_function_ids"] = {f"l{int(i)}": _put(np.zeros(0, np.int8), np.int8)
                                    for i in np.unique(np.asarray(a["linking_function_indices"]))}
-    return {**{key: (None if a[key] is None else jnp.asarray(a[key])) for key in keep}, **out}
+    return {**{key: _put(a[key]) for key in keep}, **out}
 
 
 # ---------------------------------------------------------------- host solver
@@ -682,6 +691,9 @@ def simulate_sparse_jax(
     noise_values, noise_rows, noise_cols, noise_groups,
 ):
     """Sparse equivalent of `simulate_dense`: returns (carrier.T, signal.T, noise)."""
+    parameters = jnp.asarray(parameters)
+    optimized_parameters = jnp.asarray(optimized_parameters)
+    noise_selection_vectors = jnp.asarray(noise_selection_vectors)
     parameters = parameters.at[[0], optimized_parameter_indices].set(optimized_parameters[optimized_value_indices])
     inputs_to_link = parameters[0, linked_indices]
     outputs_to_link = vmap(lambda i, x: lax.switch(i, LINKING_FUNCTIONS, x))(linking_function_indices, inputs_to_link)
@@ -764,8 +776,7 @@ def simulate(
         from differometor.host import make_host_simulate
         host_simulate, _ = make_host_simulate(arrays)
         if host_simulate is not None:
-            rest = {key: value for key, value in arrays.items() if key != "optimized_parameters"}
-            return host_simulate(optimized_parameters, rest)
+            return host_simulate(optimized_parameters)
     return simulate_sparse_jax(**arrays)
 
 
