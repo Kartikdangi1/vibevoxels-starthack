@@ -717,6 +717,25 @@ def _expand(array, indices, values):
     return out, source, (rows, cols)
 
 
+def _scatter_add(out, index, values):
+    """out[l, index[m]] += values[l, m] with repeated indices accumulated; ~10x faster than np.add.at.
+
+    out (L, N) is modified in place, index (M,) integer, values (L, M) (or (M,) when L == 1).
+    """
+    L, N = out.shape
+    if out.size == 0 or np.size(index) == 0:  # e.g. no noise detectors
+        return
+    flat = (np.arange(L)[:, None] * N + np.asarray(index).reshape(1, -1)).ravel()
+    values = np.broadcast_to(np.asarray(values), (L, flat.size // L))
+    real = np.bincount(flat, weights=values.real.ravel() if np.iscomplexobj(values) else values.ravel(),
+                       minlength=L * N)
+    if np.iscomplexobj(out):
+        imag = np.bincount(flat, weights=values.imag.ravel(), minlength=L * N) if np.iscomplexobj(values) else 0.0
+        out += (real + 1j * imag).reshape(L, N)
+    else:
+        out += real.reshape(L, N)
+
+
 def _expand_backward(ct_out, source, set_positions, n_source_rows):
     ct = np.array(ct_out)
     ct[set_positions] = 0
@@ -758,15 +777,15 @@ def _assemble_backward(plan, ct_values, groups, saved, parameters_shape):
         ct_group = ct_values[:, g["k"]]
         if key[0] == "c":  # broadcast over rows -> sum of row cotangents
             ct_group = ct_group.sum(axis=0, keepdims=True)
-        np.add.at(ct_out, (slice(None), g["rows"], g["slots"]), ct_group)
+        _scatter_add(ct_out.reshape(out_shape[0], -1), g["rows"] * out_shape[2] + g["slots"], ct_group)
         ct_in = plan.traced[fid].vjp_from_cache(cache, ct_out.reshape(n_batch, -1))
         width = g["inputs"].shape[1]
         ct_in = np.asarray(ct_in).reshape(out_shape[0], g["inputs"].shape[0], 7)[..., :width]
         if out_shape[0] == 1:
-            np.add.at(ct_parameters[0], g["inputs"], ct_in[0])
+            _scatter_add(ct_parameters[0:1], g["inputs"].ravel(), ct_in[0].ravel())
         else:
-            rows = np.arange(out_shape[0])[:, None, None]
-            np.add.at(ct_parameters, (np.broadcast_to(rows, ct_in.shape), np.broadcast_to(g["inputs"][None], ct_in.shape)), ct_in)
+            # (R, K, width) cotangents -> (R, P): flatten the (K, width) axes and accumulate per row
+            _scatter_add(ct_parameters, g["inputs"].ravel(), ct_in.reshape(out_shape[0], -1))
     return ct_parameters
 
 
@@ -1096,8 +1115,9 @@ def _backward(plan, a, r, ct_carrier_T, ct_signal_T, ct_noise):
     ct_s = ct_q[:, :, None]  # ct of the complex sum terms (real)
     ct_nvals = np.sum(ct_s * wr_conj * wc, axis=(0, 1))[None, :] if r["noise_const"] else np.sum(ct_s * wr_conj * wc, axis=1)
     ct_w = np.zeros((F, D, SN), np.complex128)
-    np.add.at(ct_w, (slice(None), slice(None), nr), np.conj(ct_s * nvals[:, None, :] * wc))
-    np.add.at(ct_w, (slice(None), slice(None), nc), ct_s * nvals[:, None, :] * wr_conj)
+    ct_w2 = ct_w.reshape(F * D, SN)  # view; accumulate the two bilinear-form terms
+    _scatter_add(ct_w2, nr, np.conj(ct_s * nvals[:, None, :] * wc).reshape(F * D, nr.size))
+    _scatter_add(ct_w2, nc, (ct_s * nvals[:, None, :] * wr_conj).reshape(F * D, nc.size))
 
     # sparse solves (signal x and noise weights w share one factorisation)
     svals = r["svals"]
