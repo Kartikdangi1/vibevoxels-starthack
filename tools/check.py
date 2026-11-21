@@ -27,7 +27,10 @@ def main():
     ap.add_argument("--full", action="store_true", help="use all 101 frequencies")
     ap.add_argument("--save-arrays", type=Path, help="save outputs/gradient to .npz for tools/compare.py")
     ap.add_argument("--atol", type=float, default=1e-5, help="max |log(sens) - log(ref)|")
+    ap.add_argument("--repo", type=Path, default=ROOT, help="repo checkout to test (e.g. a git worktree of main)")
     args = ap.parse_args()
+    repo = args.repo.resolve()
+    sys.path.insert(0, str(repo))  # make `import differometor` use this checkout, not the editable install
 
     os.environ["JAX_PLATFORMS"] = "cpu"
     os.environ["JAX_ENABLE_X64"] = "true"
@@ -40,7 +43,8 @@ def main():
 
     jax.config.update("jax_enable_compilation_cache", False)
 
-    data = ROOT / "examples" / "data"
+    print(f"testing differometor from: {Path(df.__file__).resolve().parent}")
+    data = repo / "examples" / "data"
     fixture = json.loads((data / "uifo_800_3000.json").read_text())
     reference = json.loads((data / "uifo_800_3000_test_data.json").read_text())
     all_freqs = np.asarray(reference["frequencies"], dtype=np.float64)
