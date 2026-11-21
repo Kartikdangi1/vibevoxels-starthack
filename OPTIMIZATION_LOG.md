@@ -180,3 +180,28 @@ python benchmark.py --cpus 1 --repeats 3 --output benchmark-check.json   # Linux
 python benchmark.py --repeats 3 --output benchmark-check.json            # macOS
 DIFFEROMETOR_BACKEND=jax python benchmark.py --repeats 3 --output check-jax.json  # in-graph fallback path
 ```
+
+## Challenger — final audit of the integrated submission (HEAD after E9): **APPROVE**
+
+No demonstrated bugs in E6–E9 or their combination.
+
+- **E6 (direct SuperLU binding).** Solves and `perm_c` are bitwise identical to `scipy.sparse.linalg.splu`.
+  On Linux, scipy 1.18.1 ships exactly one `_superlu.*.so`; it depends only on NumPy, and a later
+  `import scipy.sparse.linalg` reuses the same module.
+- **E7 (block-diagonal LU).** Results match per-block LU within 1e-15. NaN/inf in one block does not
+  affect the others. Fill is identical even on an 8×8 UIFO (n = 4533).
+- **E8 (JVP transposition).** On real component inputs captured from aLIGO, Voyager, UIFO and the
+  fixture, all 19 component functions match `jax.vjp` to ≤ 4e-16, including scaled, sign-flipped and
+  zeroed inputs.
+- **Integrated gradients, host vs JAX autodiff.**
+  - aLIGO and Voyager, all modes: ≤ 3e-11.
+  - UIFO 2/3/4: ≤ 2e-11.
+  - Carrier sweeps: ≤ 4e-14.
+  - Perturbed parameters: ≤ 7e-14.
+  - Process-state cases (eviction, re-jit, vmap, repeated builds) all correct.
+- **benchmark.py:** PASS (max log error 5.37e-6).
+
+Residual hypothetical risks:
+- The pattern caches never evict, which only matters for many large setups in one process.
+- The self-check samples inputs only in [0.3, 1.7].
+- **HEAD has not yet been run on Linux with `--cpus 1`.** Recommended before submission.
