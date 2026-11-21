@@ -117,19 +117,19 @@ def make_fig1():
 
 
 # ---------------------------------------------------------------------------
-# Figure 2: Benchmark Timing Comparison (Baseline vs Combined Verdicts 1-5)
+# Figure 2: Benchmark Timing Comparison (Baseline vs Final Combined Solution)
 # ---------------------------------------------------------------------------
 def make_fig2():
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10.5, 4.1))
 
-    # Exact numbers from benchmarks/cpu-baseline.json and scratch/new3.json
+    # Exact numbers from benchmarks/cpu-baseline.json and results/combined-final.json
     # Warm runtime medians:
     # Baseline: forward=13.1435, sensitivity=0.1027, gradient=4.4106, total_median=17.6787
-    # Combined (new3.json): forward=0.3028, sensitivity=0.00053, gradient=0.3950, total_median=0.7213
-    configs = ["Baseline\n(Xeon 8468, 1 CPU)", "Combined Verdicts 1-5\n(i7-1355U WSL2, 1 CPU)"]
-    fwd = np.array([13.1435, 0.3028])
-    grad = np.array([4.4106, 0.3950])
-    sens = np.array([0.1027, 0.00053])
+    # Combined (combined-final.json): forward=0.2636, sensitivity=0.00064, gradient=0.1494, total_median=0.4110
+    configs = ["Baseline\n(Xeon 8468, 1 CPU)", "Final Combined\n(i7-1355U WSL2, 1 CPU)"]
+    fwd = np.array([13.1435, 0.2636])
+    grad = np.array([4.4106, 0.1494])
+    sens = np.array([0.1027, 0.00064])
 
     x = np.arange(len(configs))
     w = 0.48
@@ -141,19 +141,19 @@ def make_fig2():
     ax1.set_xticklabels(configs)
     ax1.set_ylabel("Median Warm Execution Time (s)")
     ax1.set_ylim(0, 21.0)
-    ax1.set_title("(a) Warm Execution Time (24.5x Faster)", pad=8, fontweight="bold")
+    ax1.set_title("(a) Warm Execution Time (43.0x Faster)", pad=8, fontweight="bold")
     ax1.legend(loc="upper right", frameon=True, facecolor="white", framealpha=0.9)
 
-    totals_warm = [17.679, 0.721]
+    totals_warm = [17.679, 0.411]
     ax1.text(0, totals_warm[0] + 0.45, "17.68 s\n(fwd 13.14 s | grad 4.41 s)", ha="center", va="bottom", fontsize=8.2, fontweight="bold", color=C_DARK)
-    ax1.text(1, totals_warm[1] + 0.45, "0.721 s (24.5x)\n(fwd 0.303 s | grad 0.395 s)", ha="center", va="bottom", fontsize=8.2, fontweight="bold", color=C_GREEN)
+    ax1.text(1, totals_warm[1] + 0.45, "0.411 s (43.0x)\n(fwd 0.264 s | grad 0.149 s)", ha="center", va="bottom", fontsize=8.2, fontweight="bold", color=C_GREEN)
 
     # Panel B: Full First-Run End-to-End breakdown
     # Baseline: setup=3.661, compile=22.918, first_exec=17.625, total=44.204
-    # Combined (new3.json): setup=3.678, compile=19.605, first_exec=1.125, total=24.407
-    setup = np.array([3.661, 3.678])
-    comp = np.array([22.918, 19.605])
-    exec1 = np.array([17.625, 1.125])
+    # Combined (combined-final.json): setup=1.852, compile=1.516, first_exec=0.605, total=3.973
+    setup = np.array([3.661, 1.852])
+    comp = np.array([22.918, 1.516])
+    exec1 = np.array([17.625, 0.605])
 
     ax2.bar(x, setup, width=w, color=C_GREY, label="Imports & Setup")
     ax2.bar(x, comp, bottom=setup, width=w, color=C_SKY, label="XLA Trace / Lower / Compile")
@@ -163,11 +163,11 @@ def make_fig2():
     ax2.set_xticklabels(configs)
     ax2.set_ylabel("First-Run End-to-End Time (s)")
     ax2.set_ylim(0, 52.0)
-    ax2.set_title("(b) First-Run End-to-End Breakdown", pad=8, fontweight="bold")
+    ax2.set_title("(b) First-Run End-to-End Breakdown (11.1x Faster)", pad=8, fontweight="bold")
     ax2.legend(loc="upper right", frameon=True, facecolor="white", framealpha=0.9)
 
     ax2.text(0, 44.204 + 0.8, "44.20 s total\n(40% exec / 52% compile)", ha="center", va="bottom", fontsize=8.2, fontweight="bold", color=C_DARK)
-    ax2.text(1, 24.407 + 0.8, "24.41 s total\n(4.6% exec / 80% compile)", ha="center", va="bottom", fontsize=8.2, fontweight="bold", color=C_BLUE)
+    ax2.text(1, 3.973 + 0.8, "3.97 s total (11.1x)\n(1.52 s compile / 0.61 s exec)", ha="center", va="bottom", fontsize=8.2, fontweight="bold", color=C_BLUE)
 
     fig.tight_layout(w_pad=2.5)
     save_fig(fig, "fig2_benchmark_comparison")
@@ -285,8 +285,8 @@ def make_fig4():
         )
 
     # Row labels
-    ax.text(1.0, 42.5, "BEFORE: Baseline Dense Pipeline (17.68 s warm | 606 dense LU solves)", fontsize=9.8, fontweight="bold", color=C_VERM)
-    ax.text(1.0, 20.5, "AFTER: Combined Verdicts 1-5 (0.721 s warm | 101 cached SuperLU solves)", fontsize=9.8, fontweight="bold", color=C_GREEN)
+    ax.text(1.0, 42.5, "BEFORE: Baseline Dense Pipeline (17.68 s warm | 44.20 s first-run | 606 dense LU solves)", fontsize=9.5, fontweight="bold", color=C_VERM)
+    ax.text(1.0, 20.5, "AFTER: Final Combined Pipeline (0.411 s warm | 3.97 s first-run | 1 block-diag SuperLU)", fontsize=9.5, fontweight="bold", color=C_GREEN)
 
     # BEFORE row (y = 28..39)
     draw_box(1.5, 29, 17, 10, "19-way\nlax.switch\n(all functions)", "#FEE2E2", C_VERM)
@@ -301,13 +301,13 @@ def make_fig4():
     ax.plot([1, 99], [24.2, 24.2], linestyle="--", color="#CBD5E1", lw=1.0)
 
     # AFTER row (y = 7..17)
-    draw_box(1.5, 6, 17, 11, "Slim Dispatch (V5)\nCarrier: 4 | Noise: 4\nSignal: 15 branches", "#E0F2FE", C_BLUE)
-    draw_arrow(19.2, 11.5, 21.8, 11.5, C_BLUE)
-    draw_box(22.5, 6, 18, 11, "Sparse COO (V3)\n(vals, rows, cols)\n+ static base\n(2,700 nonzeros)", "#E0F2FE", C_BLUE)
-    draw_arrow(41.2, 11.5, 43.8, 11.5, C_BLUE)
-    draw_box(44.5, 6, 20.5, 11, "1x SuperLU / freq (V2)\nLRU Cached Factors\nSignal: A x = b\nNoise: A^T conj(w) = conj(c)", "#DCFCE7", C_GREEN, bold=True)
-    draw_arrow(65.7, 11.5, 68.3, 11.5, C_GREEN)
-    draw_box(69.0, 6, 29.0, 11, "Exact Quadratic + Sparse VJP\n(V1+V4): Re(w^H N w) at nnz(N)\n(V2+V3): Reuse LU (trans='T'/'N')\n-lam[r]*x[c] at 2,700 entries", "#DCFCE7", C_GREEN)
+    draw_box(1.5, 6, 18.5, 11, "Single custom_vjp\nNumPy jaxpr + JVP\ntranspose (1.52 s XLA)", "#E0F2FE", C_BLUE)
+    draw_arrow(20.7, 11.5, 23.0, 11.5, C_BLUE)
+    draw_box(23.7, 6, 18.0, 11, "Grouped Sparse COO\nNo lax.switch; sweep\nhoist (2,537 nnz)", "#E0F2FE", C_BLUE)
+    draw_arrow(42.4, 11.5, 44.7, 11.5, C_BLUE)
+    draw_box(45.4, 6, 20.5, 11, "Block-Diag _superlu\n101 freqs -> 1 call\n+ 1-step refinement\n(75,851x75,851)", "#DCFCE7", C_GREEN, bold=True)
+    draw_arrow(66.6, 11.5, 68.9, 11.5, C_GREEN)
+    draw_box(69.6, 6, 28.4, 11, "Adjoint + Sparse VJP\nRe(w^H N w) at 272 nnz\nReuse LU (trans='T'/'N')\nJAX fallback if needed", "#DCFCE7", C_GREEN)
 
     fig.tight_layout()
     save_fig(fig, "fig4_optimization_pipeline")
