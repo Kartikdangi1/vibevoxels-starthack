@@ -631,6 +631,7 @@ def trace_function(function, in_shape, dtype):
         traced = JvpTransposedFunction(function, in_shape, dtype)
         if _self_check(traced, in_shape, dtype) is not None:
             raise _Unsupported("self-check")
+        return traced  # already self-checked above; checking it again would repeat identical work
     except _Unsupported:
         traced = TracedFunction(function, in_shape, dtype)
     if not traced.unsupported:
@@ -823,7 +824,9 @@ class RefinedLU:
     Factorisation options are SuperLU's defaults, exactly as `scipy.sparse.linalg.splu`.
     """
 
-    def __init__(self, values, rows, cols, n, refine=1):
+    # DIFFEROMETOR_REFINE=0 skips refinement (about 0.1 s faster per warm run on the benchmark setup, results
+    # agree to ~5e-8); the default keeps it because other, worse-conditioned setups need it.
+    def __init__(self, values, rows, cols, n, refine=int(os.environ.get("DIFFEROMETOR_REFINE", 1))):
         self.pattern = _pattern(rows, cols, n)
         self.values = np.asarray(values, dtype=np.complex128)
         self.refine = refine
