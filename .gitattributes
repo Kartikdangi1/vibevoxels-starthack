@@ -4,3 +4,9 @@
 *.sh text eol=lf
 Dockerfile text eol=lf
 *.py text eol=lf
+
+# The fixture/reference JSON files are hash-pinned in benchmark.py (FIXTURE_SHA256 / REFERENCE_SHA256) -
+# any line-ending conversion changes their bytes and fails benchmark.py's "Restore the unchanged public
+# fixtures" check. Treat as binary so core.autocrlf never touches them, on any OS, ever.
+examples/data/*.json -text
+benchmarks/*.json -text
