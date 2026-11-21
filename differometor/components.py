@@ -821,7 +821,7 @@ def amplitude_detector(solution: jnp.ndarray) -> jnp.ndarray:
     return jnp.sqrt(0.5 * EPSILON_0C) * jnp.abs(solution)
 
 
-def power_detector(solution: jnp.ndarray) -> jnp.ndarray:
+def _power_detector_jax(solution: jnp.ndarray) -> jnp.ndarray:
     """
     Convert complex field amplitude to optical power.
 
@@ -843,7 +843,7 @@ def power_detector(solution: jnp.ndarray) -> jnp.ndarray:
     return 0.5 * EPSILON_0C * jnp.abs(solution) ** 2
 
 
-def signal_detector(carrier: jnp.ndarray, signal: jnp.ndarray) -> jnp.ndarray:
+def _signal_detector_jax(carrier: jnp.ndarray, signal: jnp.ndarray) -> jnp.ndarray:
     """
     Demodulate optical power for a single-frequency signal step.
 
@@ -869,6 +869,118 @@ def signal_detector(carrier: jnp.ndarray, signal: jnp.ndarray) -> jnp.ndarray:
     upper_sideband = jnp.conj(carrier) * signal[: carrier.shape[0]]
     lower_sideband = carrier * signal[carrier.shape[0] : carrier.shape[0] * 2]
     return upper_sideband + lower_sideband
+
+
+# -----------------------------------------------------------------------------
+# Host (NumPy) detectors
+# -----------------------------------------------------------------------------
+# The detectors are evaluated on the host behind a `jax.custom_vjp` with
+# hand-written adjoints, so XLA compiles one callback per pass instead of the
+# elementwise graph and its reverse-mode graph. Same formulas as the `_jax`
+# versions above; DIFFEROMETOR_BACKEND=jax selects those instead. JAX's complex
+# cotangent convention: for y = a*z, ct(z) = a*ct(y); for y = conj(z), ct(z) = conj(ct(y)).
+# Reverse mode only (like the host simulation); use the jax backend for forward mode.
+
+
+def _sum_to(x, shape):
+    """Adjoint of NumPy broadcasting: sum `x` down to `shape`."""
+    x = np.asarray(x)
+    while x.ndim > len(shape):
+        x = x.sum(axis=0)
+    axes = tuple(i for i, (have, want) in enumerate(zip(x.shape, shape)) if want == 1 and have != 1)
+    return x.sum(axis=axes, keepdims=True) if axes else x
+
+
+def _as_dtype(x, dtype):
+    return np.asarray(np.real(x) if not np.issubdtype(dtype, np.complexfloating) else x, dtype=dtype)
+
+
+# Callback arguments arrive as jax.Arrays; convert first, or slicing them would
+# dispatch (and compile) eager JAX ops inside the callback.
+def _signal_detector_np(carrier, signal):
+    carrier, signal = np.asarray(carrier), np.asarray(signal)
+    n = carrier.shape[0]
+    out = np.conj(carrier) * signal[:n] + carrier * signal[n : 2 * n]
+    return np.asarray(out, dtype=np.result_type(carrier, signal))
+
+
+def _signal_detector_bwd_np(carrier, signal, ct):
+    carrier, signal, ct = np.asarray(carrier), np.asarray(signal), np.asarray(ct)
+    n = carrier.shape[0]
+    upper, lower = signal[:n], signal[n : 2 * n]
+    ct_carrier = _sum_to(np.conj(upper * ct) + lower * ct, carrier.shape)
+    ct_signal = np.zeros(signal.shape, np.result_type(signal, ct))
+    ct_signal[:n] = _sum_to(np.conj(carrier) * ct, upper.shape)
+    ct_signal[n : 2 * n] = _sum_to(carrier * ct, lower.shape)
+    return _as_dtype(ct_carrier, carrier.dtype), _as_dtype(ct_signal, signal.dtype)
+
+
+@jax.custom_vjp
+def _signal_detector_host(carrier, signal):
+    out = jax.eval_shape(_signal_detector_jax, carrier, signal)
+    return jax.pure_callback(_signal_detector_np, out, carrier, signal, vmap_method="sequential")
+
+
+def _signal_detector_fwd(carrier, signal):
+    return _signal_detector_host(carrier, signal), (carrier, signal)
+
+
+def _signal_detector_bwd(residuals, ct):
+    carrier, signal = residuals
+    shapes = (jax.ShapeDtypeStruct(carrier.shape, carrier.dtype), jax.ShapeDtypeStruct(signal.shape, signal.dtype))
+    return jax.pure_callback(_signal_detector_bwd_np, shapes, carrier, signal, ct, vmap_method="sequential")
+
+
+_signal_detector_host.defvjp(_signal_detector_fwd, _signal_detector_bwd)
+
+
+def _power_detector_np(solution):
+    solution = np.asarray(solution)
+    return np.asarray(0.5 * EPSILON_0C * np.abs(solution) ** 2, dtype=np.real(np.zeros((), solution.dtype)).dtype)
+
+
+def _power_detector_bwd_np(solution, ct):
+    # P = k z conj(z) with real cotangent: ct(z) = 2 k conj(z) ct.
+    solution, ct = np.asarray(solution), np.asarray(ct)
+    return _as_dtype(EPSILON_0C * np.conj(solution) * np.real(ct), solution.dtype)
+
+
+@jax.custom_vjp
+def _power_detector_host(solution):
+    out = jax.eval_shape(_power_detector_jax, solution)
+    return jax.pure_callback(_power_detector_np, out, solution, vmap_method="sequential")
+
+
+def _power_detector_fwd(solution):
+    return _power_detector_host(solution), solution
+
+
+def _power_detector_bwd(solution, ct):
+    shape = jax.ShapeDtypeStruct(solution.shape, solution.dtype)
+    return (jax.pure_callback(_power_detector_bwd_np, shape, solution, ct, vmap_method="sequential"),)
+
+
+_power_detector_host.defvjp(_power_detector_fwd, _power_detector_bwd)
+
+
+def _use_host():
+    import os
+
+    return os.environ.get("DIFFEROMETOR_BACKEND", "host") != "jax"
+
+
+def signal_detector(carrier: jnp.ndarray, signal: jnp.ndarray) -> jnp.ndarray:
+    """Demodulated signal, conj(carrier) * upper + carrier * lower; see `_signal_detector_jax`."""
+    if _use_host():
+        return _signal_detector_host(jnp.asarray(carrier), jnp.asarray(signal))
+    return _signal_detector_jax(carrier, signal)
+
+
+def power_detector(solution: jnp.ndarray) -> jnp.ndarray:
+    """Optical power 0.5 * EPSILON_0C * |field|^2; see `_power_detector_jax`."""
+    if _use_host():
+        return _power_detector_host(jnp.asarray(solution))
+    return _power_detector_jax(solution)
 
 
 # -----------------------------------------------------------------------------
