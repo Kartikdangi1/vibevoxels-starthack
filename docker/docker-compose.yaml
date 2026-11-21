@@ -1,0 +1,24 @@
+# Usage (from hackathon/):
+#   docker compose -f docker/docker-compose.yaml run --rm hack bash
+#   # inside the container:
+#   python start_here.py
+#   python benchmark.py --cpus 1 --output benchmark-baseline.json
+services:
+  hack:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        UID: ${HOST_UID:-1000}
+        GID: ${HOST_GID:-1000}
+    image: feyer-hackathon:dev
+    container_name: feyer_hackathon
+    working_dir: /work
+    environment:
+      - PYTHONUNBUFFERED=1
+    # `pip install -e .` here (not in the Dockerfile) because the bind mount below only appears at container start,
+    # after the image layers are built - the editable install needs the real source tree, egg-info and all.
+    entrypoint: ["sh", "-c", "pip install -e . -q && exec \"$@\"", "--"]
+    command: ["sleep", "infinity"]
+    volumes:
+      - ..:/work
