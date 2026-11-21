@@ -1,0 +1,22 @@
+run            first run s  speedup  warm med s  speedup  compile s  max|dlogS| vs ref data
+baseline            35.829     1.0x     16.9520     1.0x     19.301               5.374e-06
+cpp                  0.964    37.2x      0.0969   174.9x      0.524               5.374e-06
+stage3               0.941    38.1x      0.1472   115.2x      0.406               5.374e-06
+fastreadout          0.895    40.0x      0.1727    98.1x      0.348               5.374e-06
+v2                   0.656    54.6x      0.0844   200.8x      0.235               5.374e-06
+
+numeric agreement with 'baseline' (saved arrays):
+run             max|dlogS|  grad rel.err  grad cosine   loss diff
+cpp              6.717e-08     8.675e-08 1.0000000000   6.920e-10
+stage3           6.749e-08     8.763e-08 1.0000000000   6.926e-10
+fastreadout      6.749e-08     8.844e-08 1.0000000000   6.926e-10
+v2               6.717e-08     8.606e-08 1.0000000000   6.920e-10
+
+phase medians (warm, seconds):
+phase                 baseline           cpp        stage3   fastreadout            v2
+forward                13.3599        0.0427        0.0967        0.1106        0.0478
+sensitivity             0.2501        0.0002        0.0002        0.0008        0.0009
+gradient                3.0100        0.0503        0.0501        0.0585        0.0364
+host_transfer           0.0002        0.0001        0.0001        0.0001        0.0001
+
+cpu: {'baseline': 'AMD EPYC 9334 32-Core Processor (1 cpu)', 'cpp': 'AMD EPYC 9334 32-Core Processor (1 cpu)', 'stage3': 'AMD EPYC 9334 32-Core Processor (1 cpu)', 'fastreadout': 'AMD EPYC 9334 32-Core Processor (1 cpu)', 'v2': 'AMD EPYC 9334 32-Core Processor (1 cpu)'}
