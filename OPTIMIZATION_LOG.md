@@ -20,6 +20,7 @@ was run at least twice; all runs are listed.
 | E7 | all frequencies factorised as one block-diagonal system | (runtime 0.17 → 0.13 s) | — | 5.374e-6 | INTEGRATED | bf7d4c2 |
 | E8 | VJP by transposing JAX's JVP program (cheaper tracing) | 0.591 / 0.632 | 0.13 | 5.374e-6 | INTEGRATED | 0c64f2b |
 | E9 | Challenger fixes: rank alignment, real cotangents, self-check, referenced links only | 0.616 / 0.647 / 0.732 | 0.12 | 5.374e-6 | INTEGRATED | bc8ad3c |
+| E10 | native C++ batched sparse LU (`differometor/native`), branch `cpp-implementation` | WSL i5: see E10 section | WSL i5: 0.26–0.28 → 0.14–0.16 | 5.374e-6 | CANDIDATE | — |
 
 Overall: **24.889 s → ~0.62 s (≈40×)** first run; warm 12.13 s → 0.12 s (≈100×).
 The 5.374e-6 public error equals the upstream code's own error against the reference.
@@ -129,6 +130,38 @@ Any failure routes `simulate` to the in-graph JAX fallback. All Challenger repro
 or fall back. One finding was rejected as out of scope: gradients with respect to inputs other than
 `optimized_parameters`, which is documented.
 
+**E10 — native C++ sparse LU (branch `cpp-implementation`).** After E9 the largest host-side
+cost was SciPy SuperLU: the factorisation (≈0.1 s), refined solves, and loading the extension
+(≈25 ms). `differometor/native/dfsparse.cpp` (plain C ABI, loaded with `ctypes`) replaces
+`BatchedLU` when the library is built; otherwise SuperLU is used unchanged (`DIFFEROMETOR_NATIVE=0`
+forces SuperLU).
+
+- **Algorithm.** Left-looking Gilbert–Peierls LU with partial pivoting (CSparse/KLU style).
+  Minimum-degree column order on A + Aᵀ is computed once per pattern.
+- **Pivot reuse (KLU refactor).** Frequency 0 is pivoted; each later frequency reuses the previous
+  pivot order and L/U pattern. The reuse is accepted only if every reused pivot is ≥ 0.1 × the
+  largest entry below it (threshold partial pivoting); otherwise that frequency is pivoted afresh.
+  On the benchmark all 100 later frequencies reuse it.
+- **Solves.** N/T/H solves with one refinement step (residual from the original A), as in
+  `RefinedLU`. A singular system gives NaN for that frequency only.
+- **Signal system, 101 frequencies, 1 CPU (WSL i5-1145G7).** Factorisation 76 ms (SuperLU) →
+  ≈20 ms. Refined solves are ≈4× faster. Benchmark phases over 3 runs each: forward 0.21–0.28 →
+  0.10–0.11 s; gradient 0.10–0.11 → 0.08–0.11 s; warm runtime median 0.26–0.28 → 0.14–0.16 s. The
+  end-to-end first run on this machine is dominated by import-time noise (2.5–3.8 s).
+- **Accuracy** (`tests/check_native_solver.py`, 12 topologies: aLIGO ×3 modes, Voyager ×3,
+  both UIFO fixtures, 4 random UIFOs). Native vs SuperLU agrees about as closely as SuperLU vs the
+  in-graph JAX path. The exceptions:
+  - Voyager AM: 4e-6 log (stagnates with more refinement; at the float64 floor shown in E5).
+  - Voyager FM: below float64 resolution for every method (E5). Here native is closer to JAX than
+    SuperLU is.
+  - Public benchmark: |Δlog S| 5.374e-6, identical to SuperLU.
+- **Rejected.** Minimum degree on AᵀA (COLAMD-like) has 30 % less fill and factorises in 13 ms, but
+  its error is 1.5e-2 on Voyager space modulation and 2e-6 on uifo_20_5000, even without pivot
+  reuse. The ordering affects the tiny solution components the noise form depends on.
+- **Build.** `pip install -e .` compiles the library (`setup.py` → `differometor/native/build.py`):
+  `$CXX`, `c++`, `g++` or `clang++`, else the `ziglang` pip package. If no compiler is found, the
+  install still succeeds and SuperLU is used. Nothing is compiled at run time.
+
 ## Generality evidence (E5; unchanged in E9, [`results/generality-e9.jsonl`](results/generality-e9.jsonl))
 
 20 log-spaced frequencies (3 Hz – 3 kHz) per case. The comparisons are host path vs original
@@ -179,4 +212,6 @@ python -m pip install -r requirements.txt && python -m pip install -e .
 python benchmark.py --cpus 1 --repeats 3 --output benchmark-check.json   # Linux
 python benchmark.py --repeats 3 --output benchmark-check.json            # macOS
 DIFFEROMETOR_BACKEND=jax python benchmark.py --repeats 3 --output check-jax.json  # in-graph fallback path
+DIFFEROMETOR_NATIVE=0 python benchmark.py --repeats 3 --output check-superlu.json  # host path with SuperLU instead of the C++ solver
+python tests/check_native_solver.py  # C++ solver vs SuperLU vs JAX on 12 topologies
 ```

@@ -10,3 +10,8 @@ benchmark*.pdf
 benchmark*.svg
 *.npz
 examples/results/
+
+# native solver build output
+differometor/native/*.so
+differometor/native/*.dylib
+differometor/native/*.dll

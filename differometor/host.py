@@ -936,7 +936,20 @@ def _factor(values, rows, cols, n):
 _BATCHED_PATTERNS = {}
 
 
-class BatchedLU:
+def BatchedLU(values, rows, cols, n):
+    """Factorise F same-pattern systems: the native C++ solver if built, else SuperLU.
+
+    Both refine every solve once and give NaN only for singular systems. The native
+    solver (`differometor/native`) also avoids loading SciPy's SuperLU extension.
+    `DIFFEROMETOR_NATIVE=0` forces SuperLU.
+    """
+    from differometor import native
+    if native.available():
+        return native.NativeBatchedLU(values, _pattern(rows, cols, n))
+    return SuperLUBatchedLU(values, rows, cols, n)
+
+
+class SuperLUBatchedLU:
     """Factorise F same-pattern systems at once as one block-diagonal sparse matrix.
 
     Block-diagonal LU is exactly the per-block LU (pivoting cannot cross blocks), but
