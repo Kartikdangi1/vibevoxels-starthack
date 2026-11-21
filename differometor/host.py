@@ -397,9 +397,11 @@ def _assemble(plan, parameters, base, groups):
     saved = []
     for key, g in groups.items():
         fid = int(key[1:])
-        inputs = parameters[:, g["inputs"]].reshape(-1, 7)  # (R*K, 7)
+        # 'c' groups read no swept parameter: all rows agree, evaluate row 0 once.
+        evaluated_rows = 1 if key[0] == "c" else rows_count
+        inputs = parameters[:evaluated_rows, g["inputs"]].reshape(-1, 7)  # (R*K, 7)
         traced = plan.traced[fid]
-        out = traced(inputs).reshape(rows_count, g["inputs"].shape[0], -1)
+        out = traced(inputs).reshape(evaluated_rows, g["inputs"].shape[0], -1)
         values[:, g["k"]] = out[:, g["rows"], g["slots"]]
         saved.append((key, inputs, out.shape))
     return values.astype(np.complex128), saved
@@ -412,7 +414,10 @@ def _assemble_backward(plan, ct_values, groups, saved, parameters_shape):
         g = groups[key]
         fid = int(key[1:])
         ct_out = np.zeros(out_shape, np.complex128)
-        np.add.at(ct_out, (slice(None), g["rows"], g["slots"]), ct_values[:, g["k"]])
+        ct_group = ct_values[:, g["k"]]
+        if key[0] == "c":  # broadcast over rows -> sum of row cotangents
+            ct_group = ct_group.sum(axis=0, keepdims=True)
+        np.add.at(ct_out, (slice(None), g["rows"], g["slots"]), ct_group)
         ct_in = plan.traced[fid].vjp(inputs, ct_out.reshape(inputs.shape[0], -1))
         ct_in = np.asarray(ct_in).reshape(out_shape[0], g["inputs"].shape[0], 7)
         rows = np.arange(out_shape[0])[:, None, None]
@@ -420,8 +425,45 @@ def _assemble_backward(plan, ct_values, groups, saved, parameters_shape):
     return ct_parameters
 
 
+class RefinedLU:
+    """SuperLU factorisation of a sparse A with one step of iterative refinement.
+
+    The optical matrices are badly scaled (condition numbers up to ~1e31), and
+    some outputs (e.g. the quantum-noise quadratic form) depend on components
+    of the solution far below its norm. A fill-reducing sparse pivot order is
+    normwise backward stable but can lose those small components; one step of
+    fixed-precision refinement (residual computed with the sparse matrix)
+    restores componentwise accuracy. Validated against 60-digit references.
+    A singular matrix yields NaN (as the dense solver would), not an exception.
+    """
+
+    def __init__(self, values, rows, cols, n, refine=1):
+        self.matrix = sp.csc_matrix((values, (rows, cols)), shape=(n, n))
+        self.refine = refine
+        try:
+            self.lu = spl.splu(self.matrix)
+        except RuntimeError:  # exactly singular
+            self.lu = None
+
+    def _apply(self, x, trans):
+        if trans == "N":
+            return self.matrix @ x
+        if trans == "T":
+            return self.matrix.T @ x
+        return np.conj(self.matrix.T @ np.conj(x))  # A^H x
+
+    def solve(self, b, trans="N"):
+        b = np.asarray(b, dtype=np.complex128)
+        if self.lu is None:
+            return np.full(b.shape, np.nan + 1j * np.nan)
+        x = self.lu.solve(b, trans=trans)
+        for _ in range(self.refine):
+            x = x + self.lu.solve(b - self._apply(x, trans), trans=trans)
+        return x
+
+
 def _factor(values, rows, cols, n):
-    return spl.splu(sp.csc_matrix((values, (rows, cols)), shape=(n, n)))
+    return RefinedLU(values, rows, cols, n)
 
 
 def _forward(plan, a):

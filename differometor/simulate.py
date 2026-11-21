@@ -501,8 +501,13 @@ def _group_functions(function_input_indices, function_indices, output_indices, f
 def compress_arrays(arrays):
     """Convert dense-matrix arrays from the builder into the sparse `simulate` inputs."""
     a = dict(arrays)
-    swept = np.concatenate([np.asarray(a["carrier_changing_parameter_indices"]).reshape(-1),
-                            np.asarray(a["signal_changing_parameter_indices"]).reshape(-1)])
+    # Parameters that differ between rows of the expanded parameter array. A sweep with a
+    # single value (the builder's dummy default) makes all rows identical and sweeps nothing.
+    swept = [np.zeros(0, np.int64)]
+    for kind in ("carrier", "signal"):
+        if np.asarray(a[f"{kind}_changing_values"]).shape[1] > 1:
+            swept.append(np.asarray(a[f"{kind}_changing_parameter_indices"]).reshape(-1))
+    swept = np.concatenate(swept)
     out = {}
 
     carrier_matrix = np.asarray(a["carrier_matrix"])
@@ -554,7 +559,8 @@ _LU_TOKEN = [0]
 
 
 def _factor(values, rows, cols, n):
-    return spl.splu(sp.csc_matrix((values, (rows, cols)), shape=(n, n)))
+    from differometor.host import RefinedLU  # SuperLU + one refinement step; NaN if singular
+    return RefinedLU(values, rows, cols, n)
 
 
 def _factor_all(values, rows, cols, n):
