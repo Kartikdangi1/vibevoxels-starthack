@@ -43,6 +43,7 @@ from differometor.setups import Setup
 from collections import defaultdict
 from differometor.components import (
     F,
+    C_LIGHT,
     DEFAULT_REFRACTIVE_INDEX,
     DEFAULT_PROPERTIES,
     FUNCTIONS,
@@ -71,6 +72,8 @@ from differometor.components import (
     corrected_optomechanical_phase_right,
     dummy_function,
 )
+
+FUNCTION_INDEX = {function: index for index, function in enumerate(FUNCTIONS)}
 
 # ---------------------------------------------------------------------
 # Global state for parameter linking
@@ -440,6 +443,10 @@ def build(setup: Setup):
     ValueError
         If invalid graph connections are detected (for example detector as edge source).
     """
+    # Build-local indices start from zero for every setup. Runtime plans capture
+    # the resulting callables, so later builds cannot change an existing plan.
+    LINKING_FUNCTIONS.clear()
+
     system_size = 0
     signal_size = 0
     matrix_positions = {}
@@ -702,7 +709,7 @@ def build(setup: Setup):
                 output_column_indices=np.array([0]),
                 system_matrix_row_indices=np.array([system_size * 2 + signal_index]),
                 system_matrix_column_indices=np.array([-1]),
-                function_indices=[FUNCTIONS.index(signal_function)],
+                function_indices=[FUNCTION_INDEX[signal_function]],
             )
 
         # -----------------------------
@@ -782,7 +789,7 @@ def build(setup: Setup):
                     output_column_indices=np.array([0]),
                     system_matrix_row_indices=np.array([component_index]),
                     system_matrix_column_indices=np.array([-1]),
-                    function_indices=[FUNCTIONS.index(laser)],
+                    function_indices=[FUNCTION_INDEX[laser]],
                 )
 
                 set_instructions(
@@ -792,7 +799,7 @@ def build(setup: Setup):
                     output_column_indices=np.array([0]),
                     system_matrix_row_indices=np.array([component_index]),
                     system_matrix_column_indices=np.array([component_index]),
-                    function_indices=[FUNCTIONS.index(vacuum_quantum_noise)],
+                    function_indices=[FUNCTION_INDEX[vacuum_quantum_noise]],
                     system_size_for_sidebands=system_size,
                 )
 
@@ -821,7 +828,7 @@ def build(setup: Setup):
                     system_matrix_column_indices=np.array(
                         [component_index, component_index + system_size, component_index + system_size, component_index]
                     ),
-                    function_indices=[FUNCTIONS.index(squeezer)],
+                    function_indices=[FUNCTION_INDEX[squeezer]],
                 )
 
         # -----------------------------
@@ -998,7 +1005,7 @@ def build(setup: Setup):
                 output_column_indices=output_column_indices,
                 system_matrix_row_indices=system_matrix_row_indices,
                 system_matrix_column_indices=system_matrix_column_indices,
-                function_indices=[FUNCTIONS.index(surface)],
+                function_indices=[FUNCTION_INDEX[surface]],
             )
 
             # Signal update instructions: same surface function but sideband-aware frequency.
@@ -1009,7 +1016,7 @@ def build(setup: Setup):
                 output_column_indices=output_column_indices,
                 system_matrix_row_indices=system_matrix_row_indices,
                 system_matrix_column_indices=system_matrix_column_indices,
-                function_indices=[FUNCTIONS.index(surface)],
+                function_indices=[FUNCTION_INDEX[surface]],
                 system_size_for_sidebands=system_size,
             )
 
@@ -1021,7 +1028,7 @@ def build(setup: Setup):
                 output_column_indices=noise_output_column_indices,
                 system_matrix_row_indices=noise_system_matrix_indices,
                 system_matrix_column_indices=noise_system_matrix_indices,
-                function_indices=[FUNCTIONS.index(loss_quantum_noise)],
+                function_indices=[FUNCTION_INDEX[loss_quantum_noise]],
                 system_size_for_sidebands=system_size,
             )
 
@@ -1040,9 +1047,9 @@ def build(setup: Setup):
 
             target_property = setup.nodes[signal]["target_property"]
             if target_property == "amplitude":
-                function_indices.extend([FUNCTIONS.index(laser_amplitude_modulation), FUNCTIONS.index(laser_amplitude_modulation)])
+                function_indices.extend([FUNCTION_INDEX[laser_amplitude_modulation], FUNCTION_INDEX[laser_amplitude_modulation]])
             elif target_property == "frequency":
-                function_indices.extend([FUNCTIONS.index(laser_frequency_modulation), FUNCTIONS.index(laser_frequency_modulation_lower)])
+                function_indices.extend([FUNCTION_INDEX[laser_frequency_modulation], FUNCTION_INDEX[laser_frequency_modulation_lower]])
             else:
                 raise ValueError("Target property for laser modulation has to be either amplitude or frequency.")
 
@@ -1135,11 +1142,11 @@ def build(setup: Setup):
                 system_matrix_row_indices=system_matrix_row_indices,
                 system_matrix_column_indices=system_matrix_column_indices,
                 function_indices=[
-                    FUNCTIONS.index(susceptibility),
-                    FUNCTIONS.index(force_calculation_left),
-                    FUNCTIONS.index(force_calculation_right),
-                    FUNCTIONS.index(corrected_optomechanical_phase_left),
-                    FUNCTIONS.index(corrected_optomechanical_phase_right),
+                    FUNCTION_INDEX[susceptibility],
+                    FUNCTION_INDEX[force_calculation_left],
+                    FUNCTION_INDEX[force_calculation_right],
+                    FUNCTION_INDEX[corrected_optomechanical_phase_left],
+                    FUNCTION_INDEX[corrected_optomechanical_phase_right],
                 ],
                 carrier_indices=np.array(
                     [
@@ -1223,11 +1230,11 @@ def build(setup: Setup):
                 system_matrix_row_indices=system_matrix_row_indices,
                 system_matrix_column_indices=system_matrix_column_indices,
                 function_indices=[
-                    FUNCTIONS.index(susceptibility),
-                    FUNCTIONS.index(force_calculation_left),
-                    FUNCTIONS.index(force_calculation_right),
-                    FUNCTIONS.index(corrected_optomechanical_phase_left),
-                    FUNCTIONS.index(corrected_optomechanical_phase_right),
+                    FUNCTION_INDEX[susceptibility],
+                    FUNCTION_INDEX[force_calculation_left],
+                    FUNCTION_INDEX[force_calculation_right],
+                    FUNCTION_INDEX[corrected_optomechanical_phase_left],
+                    FUNCTION_INDEX[corrected_optomechanical_phase_right],
                 ],
                 carrier_indices=np.array(
                     [
@@ -1285,7 +1292,11 @@ def build(setup: Setup):
             target_output_index = target_index
 
         # Initialize the carrier matrix with the space propagation entry.
-        space_entry = space(jnp.array([F, data["properties"]["length"], data["properties"]["refractive_index"]]))[0]
+        phase = (
+            -2 * np.pi * F * data["properties"]["length"]
+            * data["properties"]["refractive_index"] / C_LIGHT
+        )
+        space_entry = -np.exp(1j * phase)
         carrier_matrix[source_input_index, target_output_index] = space_entry
         carrier_matrix[target_input_index, source_output_index] = space_entry
 
@@ -1298,7 +1309,7 @@ def build(setup: Setup):
             output_column_indices=np.array([0, 0]),
             system_matrix_row_indices=np.array([source_input_index, target_input_index]),
             system_matrix_column_indices=np.array([target_output_index, source_output_index]),
-            function_indices=[FUNCTIONS.index(space)],
+            function_indices=[FUNCTION_INDEX[space]],
         )
 
         # Signal run: update both sidebands. Lower sideband uses `space_lower`.
@@ -1329,7 +1340,7 @@ def build(setup: Setup):
                     source_output_index + system_size,
                 ]
             ),
-            function_indices=[FUNCTIONS.index(space), FUNCTIONS.index(space_lower)],
+                function_indices=[FUNCTION_INDEX[space], FUNCTION_INDEX[space_lower]],
         )
 
         # Space strain signals inject into the signal connector columns.
@@ -1363,7 +1374,7 @@ def build(setup: Setup):
                 output_row_indices=np.repeat(np.arange(space_signal_number * 2), 2),
                 system_matrix_row_indices=system_matrix_row_indices,
                 system_matrix_column_indices=system_matrix_column_indices,
-                function_indices=[FUNCTIONS.index(space_modulation), FUNCTIONS.index(space_modulation_lower)] * space_signal_number,
+                function_indices=[FUNCTION_INDEX[space_modulation], FUNCTION_INDEX[space_modulation_lower]] * space_signal_number,
                 carrier_indices=np.array([source_input_index, target_input_index, source_input_index, target_input_index] * space_signal_number),
                 carrier_row_indices=system_matrix_row_indices,
                 carrier_column_indices=system_matrix_column_indices,
@@ -1393,7 +1404,7 @@ def build(setup: Setup):
             output_column_indices=np.array([0]),
             system_matrix_row_indices=np.array([port_index]),
             system_matrix_column_indices=np.array([port_index]),
-            function_indices=[FUNCTIONS.index(vacuum_quantum_noise)],
+            function_indices=[FUNCTION_INDEX[vacuum_quantum_noise]],
             system_size_for_sidebands=system_size,
         )
 
@@ -1411,7 +1422,8 @@ def build(setup: Setup):
             port_to_index[f"{node}.{port_name}.out"] = node_index + port_offset + 1
 
     # Convert linked parameter names to parameter index positions.
-    linked_indices = [parameter_names.index(name) for name in linked_names]
+    parameter_index = {name: index for index, name in enumerate(parameter_names)}
+    linked_indices = [parameter_index[name] for name in linked_names]
     if len(linked_indices) == 0:
         linked_indices = [0]
         indices_to_link = [0]
@@ -1421,22 +1433,22 @@ def build(setup: Setup):
     return (
         (carrier_instructions, signal_instructions, noise_instructions, signal_components, parameter_names),
         (
-            jnp.array([parameters], dtype=complex),
+            jnp.array([parameters], dtype=jnp.float64),
             jnp.array(carrier_matrix),
             jnp.array(signal_matrix),
             jnp.array(noise_matrix, dtype=complex),
             jnp.array(noise_selection_vectors, dtype=complex),
-            jnp.array(qhd_parameter_indices, dtype=int),
-            jnp.array(qhd_placing_indices, dtype=int),
-            jnp.array(linked_indices, dtype=int),
-            jnp.array(linking_function_indices, dtype=int),
-            jnp.array(indices_to_link, dtype=int),
+            jnp.array(qhd_parameter_indices, dtype=jnp.int32),
+            jnp.array(qhd_placing_indices, dtype=jnp.int32),
+            jnp.array(linked_indices, dtype=jnp.int32),
+            jnp.array(linking_function_indices, dtype=jnp.int32),
+            jnp.array(indices_to_link, dtype=jnp.int32),
         ),
         (
-            jnp.array(detector_indices, dtype=int),
-            jnp.array(mirror_indices, dtype=int),
-            jnp.array(beamsplitter_indices, dtype=int),
-            jnp.array(isolator_indices, dtype=int),
+            jnp.array(detector_indices, dtype=jnp.int32),
+            jnp.array(mirror_indices, dtype=jnp.int32),
+            jnp.array(beamsplitter_indices, dtype=jnp.int32),
+            jnp.array(isolator_indices, dtype=jnp.int32),
             port_to_index,
         ),
     )
@@ -1498,6 +1510,7 @@ def pairs_to_arrays(
     - If an instruction set is empty, a dummy update is produced to keep array shapes valid.
     - The signal arrays may include additional arrays that reference carrier solution entries.
     """
+    parameter_index = {name: index for index, name in enumerate(parameter_names)}
     optimized_parameter_indices = []
     optimization_value_indices = []
 
@@ -1589,16 +1602,16 @@ def pairs_to_arrays(
         if not isinstance(optimization_pair[0], list):
             optimized_component, optimized_parameter = optimization_pair
             try:
-                optimized_parameter_indices.append(parameter_names.index(f"{optimized_component}_{optimized_parameter}"))
+                optimized_parameter_indices.append(parameter_index[f"{optimized_component}_{optimized_parameter}"])
                 optimization_value_indices.append(ix)
-            except ValueError:
+            except KeyError:
                 pass
         else:
             for optimized_component, optimized_parameter in optimization_pair:
                 try:
-                    optimized_parameter_indices.append(parameter_names.index(f"{optimized_component}_{optimized_parameter}"))
+                    optimized_parameter_indices.append(parameter_index[f"{optimized_component}_{optimized_parameter}"])
                     optimization_value_indices.append(ix)
-                except ValueError:
+                except KeyError:
                     pass
 
         if optimized_component not in signal_components and optimized_component in parameter_instructions:
@@ -1607,9 +1620,9 @@ def pairs_to_arrays(
     # Compile changing parameter indices for sweeps.
     for changing_component, changing_parameter in changing_pairs:
         if changing_component in signal_components:
-            signal_changing_parameter_indices.append(parameter_names.index(f"{changing_component}_{changing_parameter}"))
+            signal_changing_parameter_indices.append(parameter_index[f"{changing_component}_{changing_parameter}"])
         else:
-            carrier_changing_parameter_indices.append(parameter_names.index(f"{changing_component}_{changing_parameter}"))
+            carrier_changing_parameter_indices.append(parameter_index[f"{changing_component}_{changing_parameter}"])
             append_information(parameter_instructions, carrier_arrays, changing_component, carrier_components)
 
     def combine_arrays(arrays: dict, signal: bool = False):
@@ -1634,10 +1647,10 @@ def pairs_to_arrays(
         if len(arrays["function_input_indices"]) == 0:
             # Dummy update that leaves matrices unchanged.
             return (
-                jnp.array([[0, 0, 0]]),
-                jnp.array([FUNCTIONS.index(dummy_function)]),
-                jnp.array([[0], [0]]),
-                jnp.array([[0], [0]]),
+                jnp.array([[0, 0, 0]], dtype=jnp.int32),
+                jnp.array([FUNCTION_INDEX[dummy_function]]),
+                jnp.array([[0], [0]], dtype=jnp.int32),
+                jnp.array([[0], [0]], dtype=jnp.int32),
             )
 
         function_input_indices = np.vstack(arrays["function_input_indices"])
@@ -1656,27 +1669,27 @@ def pairs_to_arrays(
                 )
 
             return (
-                jnp.array(function_input_indices, dtype=int),
-                jnp.array(arrays["function_indices"], dtype=int),
-                jnp.array(output_indices, dtype=int),
-                jnp.array(system_matrix_indices, dtype=int),
-                jnp.array(carrier_solution_indices, dtype=int),
-                jnp.array(carrier_solution_placing_indices, dtype=int),
+                jnp.array(function_input_indices, dtype=jnp.int32),
+                jnp.array(arrays["function_indices"], dtype=jnp.int32),
+                jnp.array(output_indices, dtype=jnp.int32),
+                jnp.array(system_matrix_indices, dtype=jnp.int32),
+                jnp.array(carrier_solution_indices, dtype=jnp.int32),
+                jnp.array(carrier_solution_placing_indices, dtype=jnp.int32),
             )
 
         return (
-            jnp.array(function_input_indices, dtype=int),
-            jnp.array(arrays["function_indices"], dtype=int),
-            jnp.array(output_indices, dtype=int),
-            jnp.array(system_matrix_indices, dtype=int),
+            jnp.array(function_input_indices, dtype=jnp.int32),
+            jnp.array(arrays["function_indices"], dtype=jnp.int32),
+            jnp.array(output_indices, dtype=jnp.int32),
+            jnp.array(system_matrix_indices, dtype=jnp.int32),
         )
 
     return (
         (
-            jnp.array(optimized_parameter_indices, dtype=int),
-            jnp.array(optimization_value_indices, dtype=int),
-            jnp.array(carrier_changing_parameter_indices, dtype=int),
-            jnp.array(signal_changing_parameter_indices, dtype=int),
+            jnp.array(optimized_parameter_indices, dtype=jnp.int32),
+            jnp.array(optimization_value_indices, dtype=jnp.int32),
+            jnp.array(carrier_changing_parameter_indices, dtype=jnp.int32),
+            jnp.array(signal_changing_parameter_indices, dtype=jnp.int32),
         ),
         combine_arrays(carrier_arrays),
         combine_arrays(signal_arrays, signal=True),

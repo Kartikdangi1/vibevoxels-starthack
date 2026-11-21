@@ -21,10 +21,12 @@ import jax
 from time import time
 import jax.numpy as jnp
 from jax import lax, vmap, jit
+from jax.scipy.linalg import lu_factor, lu_solve
 
 from differometor.setups import Setup
 from differometor.build import build, pairs_to_arrays, prepare_arrays, LINKING_FUNCTIONS
 from differometor.components import FUNCTIONS, UNIT_VACUUM, H_PLANCK, F0
+from differometor.plans import MatrixUpdatePlan, SimulationPlan, make_simulation_plan
 
 
 jax.config.update("jax_enable_x64", True)
@@ -48,15 +50,39 @@ def solve(matrix: jnp.ndarray, right_hand_side: jnp.ndarray) -> jnp.ndarray:
 
     Notes
     -----
-    Both inputs are cast to complex128 to reduce numerical issues during solving.
-
-    The function intentionally returns the raw complex solution rather than derived
+    Matrix assembly guarantees complex128 inputs. The function intentionally
+    returns the raw complex solution rather than derived
     quantities (such as phase or amplitude), because some downstream transforms
     (notably `jnp.angle`) can produce invalid gradients in some configurations.
     """
-    right_hand_side = right_hand_side.astype(jnp.complex128)
-    matrix = matrix.astype(jnp.complex128)
     return jnp.linalg.solve(matrix, right_hand_side)
+
+
+def solve_factored(
+    matrix: jnp.ndarray,
+    factors: tuple[jnp.ndarray, jnp.ndarray],
+    right_hand_side: jnp.ndarray,
+    trans: int = 0,
+) -> jnp.ndarray:
+    """Reuse LU factors with the implicit derivative of a linear solve."""
+    if trans == 0:
+        matvec = lambda value: matrix @ value
+        solve = lambda _matvec, value: lu_solve(factors, value, trans=0)
+        transpose_solve = lambda _matvec, value: lu_solve(factors, value, trans=1)
+    elif trans == 2:
+        matvec = lambda value: jnp.conjugate(matrix.T) @ value
+        solve = lambda _matvec, value: lu_solve(factors, value, trans=2)
+        transpose_solve = lambda _matvec, value: jnp.conjugate(
+            lu_solve(factors, jnp.conjugate(value), trans=0)
+        )
+    else:
+        raise ValueError("Factored solve supports trans=0 or trans=2.")
+    return lax.custom_linear_solve(
+        matvec,
+        right_hand_side,
+        solve=solve,
+        transpose_solve=transpose_solve,
+    )
 
 
 def update(
@@ -111,6 +137,34 @@ def update(
     return matrix.at[matrix_indices[0], matrix_indices[1]].set(outputs)
 
 
+def grouped_update(
+    parameters: jnp.ndarray,
+    matrix: jnp.ndarray,
+    plan: MatrixUpdatePlan | tuple,
+) -> jnp.ndarray:
+    """Evaluate only the component functions present in this matrix update."""
+    groups = plan.groups if isinstance(plan, MatrixUpdatePlan) else plan
+    values = []
+    rows = []
+    columns = []
+    for group in groups:
+        input_indices = jnp.asarray(group.input_indices, dtype=jnp.int32)
+        outputs = vmap(FUNCTIONS[group.function_id])(parameters[input_indices])
+        output_rows = jnp.asarray(group.output_rows, dtype=jnp.int32)
+        output_columns = jnp.asarray(group.output_columns, dtype=jnp.int32)
+        values.append(outputs[output_rows, output_columns])
+        rows.extend(group.matrix_rows)
+        columns.extend(group.matrix_columns)
+
+    if not values:
+        return matrix
+    updates = jnp.concatenate(values)
+    return matrix.at[
+        jnp.asarray(rows, dtype=jnp.int32),
+        jnp.asarray(columns, dtype=jnp.int32),
+    ].set(updates)
+
+
 def expand_parameters(array: jnp.ndarray, indices: jnp.ndarray, values: jnp.ndarray) -> jnp.ndarray:
     """
     Expand a single parameter row into multiple rows by replacing selected entries.
@@ -142,6 +196,9 @@ def expand_parameters(array: jnp.ndarray, indices: jnp.ndarray, values: jnp.ndar
     This implementation uses indexed updates that remain compatible with JAX
     transformations and compilation.
     """
+    if values.shape[1] == 1:
+        return array.at[0, indices].set(values[:, 0])
+
     tiled_array = jnp.tile(array, (values.shape[1], 1))
     row_indices = jnp.repeat(jnp.arange(values.shape[1]), len(indices))
     column_indices = jnp.tile(indices, values.shape[1])
@@ -186,6 +243,7 @@ def simulate(
     noise_function_indices: jnp.ndarray,
     noise_output_indices: tuple[jnp.ndarray, jnp.ndarray],
     noise_system_matrix_indices: tuple[jnp.ndarray, jnp.ndarray],
+    update_plan: SimulationPlan,
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """
     Run one full simulation pass: carrier, signal, and quantum noise.
@@ -269,80 +327,76 @@ def simulate(
       sidebands in frequency-domain interferometer models.
     """
     # Insert optimized parameter values into the base parameter row.
-    parameters = parameters.at[[0], optimized_parameter_indices].set(
-        optimized_parameters[optimized_value_indices]
+    parameters = parameters.at[
+        0, jnp.asarray(update_plan.optimized_parameter_indices, dtype=jnp.int32)
+    ].set(
+        optimized_parameters[jnp.asarray(update_plan.optimized_value_indices, dtype=jnp.int32)]
     )
 
     # Apply parameter linking (derived parameters).
-    inputs_to_link = parameters[0, linked_indices]
-    outputs_to_link = vmap(lambda i, x: lax.switch(i, LINKING_FUNCTIONS, x))(
-        linking_function_indices, inputs_to_link
-    )
-    parameters = parameters.at[[0], indices_to_link].set(outputs_to_link)
+    linked_outputs = []
+    linked_targets = []
+    for function, input_indices, target_indices in update_plan.linked_groups:
+        inputs = parameters[0, jnp.asarray(input_indices, dtype=jnp.int32)]
+        linked_outputs.append(vmap(function)(inputs))
+        linked_targets.extend(target_indices)
+    if linked_outputs:
+        parameters = parameters.at[
+            0, jnp.asarray(linked_targets, dtype=jnp.int32)
+        ].set(jnp.concatenate(linked_outputs))
 
     # Quadrature-homodyne-detector phase factors (unit magnitude complex phase).
-    qhd_phase_values = jnp.exp(1j * jnp.radians(parameters[0, qhd_parameter_indices]))
+    qhd_phase_values = jnp.exp(
+        1j * jnp.radians(parameters[0, jnp.asarray(update_plan.qhd_parameter_indices, dtype=jnp.int32)])
+    )
 
     # --------------------
     # Carrier solve
     # --------------------
-    parameters = expand_parameters(parameters, carrier_changing_parameter_indices, carrier_changing_values)
-    carrier_matrix = vmap(update, in_axes=(0, None, None, None, None, None))(
+    parameters = expand_parameters(
         parameters,
-        carrier_matrix,
-        carrier_function_input_indices,
-        carrier_output_indices,
-        carrier_matrix_indices,
-        carrier_function_indices,
+        jnp.asarray(update_plan.carrier_changing_parameter_indices, dtype=jnp.int32),
+        carrier_changing_values,
     )
+    if parameters.shape[0] == 1:
+        carrier_matrix = grouped_update(
+            parameters[0], carrier_matrix, update_plan.carrier.static_groups
+        )[None, :, :]
+    else:
+        carrier_matrix = vmap(
+            lambda parameter: grouped_update(
+                parameter, carrier_matrix, update_plan.carrier.static_groups
+            )
+        )(parameters)
     carrier = vmap(solve)(carrier_matrix[:, :, :-1], carrier_matrix[:, :, -1])
 
     # --------------------
     # Signal solve
     # --------------------
-    parameters = expand_parameters(parameters, signal_changing_parameter_indices, signal_changing_values)
-    signal_matrix = vmap(update, in_axes=(0, None, None, None, None, None))(
+    parameters = expand_parameters(
         parameters,
-        signal_matrix,
-        signal_function_input_indices,
-        signal_output_indices,
-        signal_matrix_indices,
-        signal_function_indices,
+        jnp.asarray(update_plan.signal_changing_parameter_indices, dtype=jnp.int32),
+        signal_changing_values,
     )
-
-    # Scale signal connector entries by the carrier solution at the respective spaces.
-    # The minus sign matches the sign convention used by the referenced modeling tools.
-    signal_entries = (
-        -signal_matrix[:, signal_carrier_placing_indices[0], signal_carrier_placing_indices[1]]
-        * carrier[:, signal_carrier_indices.flatten()]
+    signal_base_matrix = grouped_update(
+        parameters[0], signal_matrix, update_plan.signal.static_groups
     )
-    signal_matrix = signal_matrix.at[:, signal_carrier_placing_indices[0], signal_carrier_placing_indices[1]].set(
-        signal_entries
-    )
-
-    # Apply conjugation rules to enforce upper and lower sideband symmetry.
     carrier_size = carrier.shape[1]
-    signal_matrix = signal_matrix.at[:, carrier_size : carrier_size * 2, carrier_size : carrier_size * 2].set(
-        jnp.conjugate(signal_matrix[:, carrier_size : carrier_size * 2, carrier_size : carrier_size * 2])
-    )
-    signal_matrix = signal_matrix.at[:, carrier_size * 2 :, :carrier_size].set(
-        jnp.conjugate(signal_matrix[:, carrier_size * 2 :, :carrier_size])
-    )
-    signal_matrix = signal_matrix.at[:, carrier_size : carrier_size * 2, carrier_size * 2 :].set(
-        jnp.conjugate(signal_matrix[:, carrier_size : carrier_size * 2, carrier_size * 2 :])
-    )
 
-    signal = vmap(solve)(signal_matrix[:, :, :-1], signal_matrix[:, :, -1])
-
-    # --------------------
-    # Quantum noise solve
-    # --------------------
-    # Apply quadrature-homodyne-detector phases into the selection vectors.
-    # `lax.scatter_mul` is used (rather than `.at[...].set`) so empty index arrays
-    # remain valid without conditionals.
+    # Homodyne phases and carrier selections do not vary over the frequency
+    # sweep, so build them once and feed one RHS block to each mapped solve.
+    #
+    # `lax.map` keeps only one dense signal matrix live at a time. Checkpointing
+    # the per-frequency body rematerializes its intermediates in reverse mode,
+    # which avoids the multi-gigabyte batched autodiff tape.
+    carrier_rows = jnp.asarray(update_plan.signal_carrier_rows, dtype=jnp.int32)
+    carrier_columns = jnp.asarray(update_plan.signal_carrier_columns, dtype=jnp.int32)
+    carrier_indices = jnp.asarray(update_plan.signal_carrier_indices, dtype=jnp.int32)
+    # Apply quadrature-homodyne-detector phases. Static placement indices keep
+    # the scatter's index metadata out of the traced dataflow.
     noise_selection_vectors = lax.scatter_mul(
         noise_selection_vectors,
-        qhd_placing_indices.reshape(-1, 3),
+        jnp.asarray(update_plan.qhd_placing_indices, dtype=jnp.int32).reshape(-1, 3),
         qhd_phase_values,
         lax.ScatterDimensionNumbers(
             update_window_dims=(),
@@ -366,49 +420,85 @@ def simulate(
         :, :, carrier.shape[1] : carrier.shape[1] * 2
     ].set(lower_carrier_selections)
 
-    # Back-propagate detector weights by solving the transposed conjugated signal system.
-    transposed_conjugated_signal_matrix = jnp.transpose(jnp.conjugate(signal_matrix[:, :, :-1]), (0, 2, 1))
+    # Broadcast only detector vectors, not dense matrices, over frequencies.
     carrier_selections = jnp.broadcast_to(
         carrier_selections,
-        (carrier_selections.shape[0], transposed_conjugated_signal_matrix.shape[0], carrier_selections.shape[2]),
+        (carrier_selections.shape[0], parameters.shape[0], carrier_selections.shape[2]),
     )
-    noise_weights = vmap(vmap(solve), in_axes=(None, 0))(transposed_conjugated_signal_matrix, carrier_selections)
+    detector_rhs = jnp.transpose(carrier_selections, (1, 2, 0))
 
-    # Update noise source matrix (may depend on current parameters).
-    noise_matrix = vmap(update, in_axes=(0, None, None, None, None, None))(
-        parameters,
-        noise_matrix,
-        noise_function_input_indices,
-        noise_output_indices,
-        noise_system_matrix_indices,
-        noise_function_indices,
+    # The noise-source matrix is frequency independent for the benchmark; keep
+    # that matrix single-copy and support frequency-dependent custom setups too.
+    if update_plan.noise.frequency_groups:
+        noise_base_matrix = grouped_update(
+            parameters[0], noise_matrix, update_plan.noise.static_groups
+        )
+    else:
+        noise_base_matrix = grouped_update(
+            parameters[0], noise_matrix, update_plan.noise.static_groups
+        )
+
+    def simulate_one_frequency(inputs):
+        parameter, detector_rhs_single = inputs
+        matrix = signal_base_matrix
+        if update_plan.signal.frequency_groups:
+            matrix = grouped_update(
+                parameter, matrix, update_plan.signal.frequency_groups
+            )
+
+        # Scale signal connector entries by the carrier solution. The minus
+        # sign matches the simulator's optical sign convention.
+        signal_entries = (
+            -matrix[carrier_rows, carrier_columns]
+            * carrier[0, carrier_indices]
+        )
+        matrix = matrix.at[carrier_rows, carrier_columns].set(signal_entries)
+
+        matrix = matrix.at[
+            carrier_size : carrier_size * 2,
+            carrier_size : carrier_size * 2,
+        ].set(jnp.conjugate(matrix[
+            carrier_size : carrier_size * 2,
+            carrier_size : carrier_size * 2,
+        ]))
+        matrix = matrix.at[carrier_size * 2 :, :carrier_size].set(
+            jnp.conjugate(matrix[carrier_size * 2 :, :carrier_size])
+        )
+        matrix = matrix.at[
+            carrier_size : carrier_size * 2,
+            carrier_size * 2 :,
+        ].set(jnp.conjugate(matrix[
+            carrier_size : carrier_size * 2,
+            carrier_size * 2 :,
+        ]))
+
+        system = matrix[:, :-1]
+        factors = jax.tree_util.tree_map(lax.stop_gradient, lu_factor(system))
+        signal_solution = solve_factored(system, factors, matrix[:, -1])
+        noise_weights = solve_factored(
+            system, factors, detector_rhs_single, trans=2
+        )
+        if update_plan.noise.frequency_groups:
+            per_frequency_noise = grouped_update(
+                parameter, noise_base_matrix, update_plan.noise.frequency_groups
+            )
+        else:
+            per_frequency_noise = noise_base_matrix
+        noise_sources = per_frequency_noise @ noise_weights
+        covariances = solve_factored(system, factors, noise_sources)
+        projected = jnp.sum(
+            jnp.real(covariances * jnp.conjugate(detector_rhs_single)), axis=0
+        )
+        noise_value = jnp.sqrt(
+            2 * projected * UNIT_VACUUM * H_PLANCK * F0 * 0.25
+        )
+        return signal_solution, noise_value
+
+    signal, noise_by_frequency = lax.map(
+        jax.checkpoint(simulate_one_frequency),
+        (parameters, detector_rhs),
     )
-
-    def matmul_single_batch(matrix_batch: jnp.ndarray, vector_batch: jnp.ndarray) -> jnp.ndarray:
-        """
-        Multiply a batch of matrices with a batch of vectors.
-
-        Parameters
-        ----------
-        matrix_batch : jnp.ndarray
-            Shape (B, N, N).
-        vector_batch : jnp.ndarray
-            Shape (B, N).
-
-        Returns
-        -------
-        product : jnp.ndarray
-            Shape (B, N).
-        """
-        return jnp.einsum("bij,bj->bi", matrix_batch, vector_batch)
-
-    # Project noise sources into the system and propagate through the signal matrix.
-    noise_sources = vmap(matmul_single_batch, in_axes=(None, 0))(noise_matrix, noise_weights)
-    covariances = vmap(vmap(solve), in_axes=(None, 0))(signal_matrix[:, :, :-1], noise_sources)
-
-    # Convert propagated covariances into amplitude spectral density.
-    temporary_sum = jnp.sum(jnp.real(covariances * jnp.conjugate(carrier_selections)), axis=2)
-    noise = jnp.sqrt(2 * temporary_sum * UNIT_VACUUM * H_PLANCK * F0 * 0.25)
+    noise = noise_by_frequency.T
 
     return carrier.T, signal.T, noise.squeeze()
 
@@ -465,11 +555,23 @@ def run_build_step(
         *instructions, optimization_pairs, changing_pairs
     )
     prepared_arrays = prepare_arrays(*arrays_to_prepare, changing_values, parameters=matrices[0])
+    update_plan = make_simulation_plan(
+        carrier_arrays,
+        signal_arrays,
+        noise_arrays,
+        matrices,
+        tuple(LINKING_FUNCTIONS),
+        prepared_arrays,
+        arrays_to_prepare[3],
+    )
 
     arg_count = simulate.__code__.co_argcount
     arg_names = simulate.__code__.co_varnames[:arg_count]
 
-    all_arrays = (*prepared_arrays, *matrices, *carrier_arrays, *signal_arrays, *noise_arrays)
+    all_arrays = (
+        *prepared_arrays, *matrices, *carrier_arrays, *signal_arrays, *noise_arrays,
+        update_plan,
+    )
     if len(arg_names) != len(all_arrays):
         raise ValueError(
             "simulate signature does not match the number of prepared arrays and matrices. "
@@ -479,8 +581,9 @@ def run_build_step(
     simulation_arrays = {arg_names[i]: array for i, array in enumerate(all_arrays)}
 
     if timeit:
-        for array in simulation_arrays.values():
-            jax.block_until_ready(array)
+        for name, array in simulation_arrays.items():
+            if name != "update_plan":
+                jax.block_until_ready(array)
         return time() - start, (simulation_arrays, metadata)
 
     return simulation_arrays, *metadata

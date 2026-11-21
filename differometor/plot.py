@@ -26,7 +26,6 @@ Important invariants for contributors:
 
 import os
 from dataclasses import dataclass, field
-import plotly.graph_objects as go
 from collections import defaultdict, deque
 import numpy as np
 
@@ -1610,6 +1609,10 @@ def visualize_setup(
     - `"topology"` displays UIFO grids like their topology strings: row 1 at
       the top, column 1 at the left, and row-major traversal left-to-right.
     """
+    # Plotting is optional; keep Plotly out of simulation-only imports.
+    global go
+    import plotly.graph_objects as go
+
     del show_labels, dpi, seed  # Retained for API compatibility.
     out_path = _resolve_html_output_path(output_file)
     if attachment_length is None:

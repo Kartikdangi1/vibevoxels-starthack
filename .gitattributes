@@ -4,3 +4,4 @@
 *.sh text eol=lf
 Dockerfile text eol=lf
 *.py text eol=lf
+examples/data/*_test_data.json text eol=lf
