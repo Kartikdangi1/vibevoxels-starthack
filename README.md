@@ -64,8 +64,9 @@ See [container.bash](container.bash) / [container.ps1](container.ps1) for the fu
 pinned wheel ever lacks a `linux/arm64` build, add `platform: linux/amd64` under the `hack` service in
 `docker/docker-compose.yaml` to build under Rosetta emulation.
 
-Verified: the image builds cleanly with all pinned deps (jax 0.9.0, jaxlib 0.9.0, numpy 2.5.5, ...) on
-Python 3.12. Running `start_here.py` end to end inside it is the next thing to confirm — see Status below.
+Verified end to end: the image builds cleanly with all pinned deps (jax 0.9.0, jaxlib 0.9.0, numpy
+2.5.5, ...) on Python 3.12, and `start_here.py` runs correctly inside it (101 frequencies, 193 gradient
+values, mean log-sensitivity error `9.6e-08` — well inside the `1e-5` correctness bar).
 
 **No Docker, or prefer it bare-metal?** Follow [CHALLENGE_README.md](CHALLENGE_README.md) directly
 (venv + pip, run inside WSL2/Linux):
@@ -102,7 +103,7 @@ CPU-only benchmark, but documented in case it's useful: [docs/RESOURCES.md](docs
 
 ## Status
 
-- [x] Get a working Docker environment running `start_here.py` (also works bare-metal in WSL2/Linux)
+- [x] Get a working Docker environment running `start_here.py` (also works bare-metal in WSL2/Linux) — verified
 - [ ] Run unmodified baseline benchmark, save `benchmark-baseline.json/.png`
 - [ ] Profile to find the bottleneck
 - [ ] Optimize `differometor/`, keep correctness checks passing
