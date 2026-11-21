@@ -1,0 +1,1105 @@
+{
+  "benchmark": "start-munich-2026-public-differometor-uifo-v2",
+  "measured_at_utc": "2026-11-21T21:26:52.218104+00:00",
+  "starter_sha256": "f09ca8862b9a4ff062b0f64784919a58b5e6d95a9e95391c4ae03991b5147982",
+  "source": {
+    "public_repository": "https://github.com/artificial-scientist-lab/Differometor",
+    "baseline_commit": "b0dc7c79e7c72a1b010174f6bdcad01efa51d6ff",
+    "commit": null,
+    "modified": null,
+    "diff_sha256": null,
+    "simulator_files_sha256": {
+      "differometor/__init__.py": "09b310e49c73614667550a9a6b5af930c9ea2958378ece5f408f7ed00e856962",
+      "differometor/build.py": "120662dc115ae536593dba83c95e7f383f9ae5b8856fc55ce3cd5df7706906df",
+      "differometor/components.py": "43de638ee61fc951ebd013dceaec8960d6aa5a58d7c4b96d1d45c4425731f1d8",
+      "differometor/host.py": "d6d111f1c4be0928f58c106e05b0f3f4ff129fabb8fe326ad5cb92e99743e49d",
+      "differometor/native/__init__.py": "960d29e2e234ed715a76b89ed2f7adda7b9499179aab0878765ad6b956092858",
+      "differometor/native/build.py": "0c2da5d4bcc2e1afcbd784e97bc27ecd267717eda1ff016d0a23245dd627edc0",
+      "differometor/native_kernels.py": "55c10b09be9117041637dd03995f90cb1cd6bdb68e584141647fe55a2250c8cf",
+      "differometor/plot.py": "a4f48e00e9f2f120a26042fe292592968bd997856b2e70d5b287256ddb0ee9f2",
+      "differometor/setups.py": "b14f42d7dd09f773a51e66d78e641bc61e4d1d652267ecef68bd0db9c2d31ea1",
+      "differometor/simulate.py": "1ebc41ae54744961ae8db771d9ce8b43160d8e0069c036a29af9f8eb9d078b76",
+      "differometor/sparse_solve.py": "cc282078fe6e52993cc4d42fdaaa606e66f0267052a91e7d1c4c8e262351a822",
+      "differometor/utils.py": "64147c9b45f45dc0204b9e75f596ffbeb12ea1f213493ac40758467d1d65aec6"
+    }
+  },
+  "inputs": {
+    "setup": "uifo_800_3000.json",
+    "setup_sha256": "ff4ba353a2a03cdce7f3e61bad729c2e00888d842c28ba9cf699f95afb87e138",
+    "reference": "uifo_800_3000_test_data.json",
+    "reference_sha256": "726f2cfe6986cb991fa48d5a28127b9330c3dc7e69d5bd193c8748acef03adc3",
+    "frequency_count": 101,
+    "gradient_parameter_count": 193,
+    "optimization_pairs": [
+      [
+        "ml11",
+        "reflectivity"
+      ],
+      [
+        "ml11",
+        "tuning"
+      ],
+      [
+        "mr11",
+        "reflectivity"
+      ],
+      [
+        "mr11",
+        "tuning"
+      ],
+      [
+        "mt11",
+        "reflectivity"
+      ],
+      [
+        "mt11",
+        "tuning"
+      ],
+      [
+        "mb11",
+        "reflectivity"
+      ],
+      [
+        "mb11",
+        "tuning"
+      ],
+      [
+        "ml11sus",
+        "mass"
+      ],
+      [
+        "mr11sus",
+        "mass"
+      ],
+      [
+        "mt11sus",
+        "mass"
+      ],
+      [
+        "mb11sus",
+        "mass"
+      ],
+      [
+        "center12",
+        "reflectivity"
+      ],
+      [
+        "center12",
+        "tuning"
+      ],
+      [
+        "center12sus",
+        "mass"
+      ],
+      [
+        "ml12",
+        "reflectivity"
+      ],
+      [
+        "ml12",
+        "tuning"
+      ],
+      [
+        "mr12",
+        "reflectivity"
+      ],
+      [
+        "mr12",
+        "tuning"
+      ],
+      [
+        "mt12",
+        "reflectivity"
+      ],
+      [
+        "mt12",
+        "tuning"
+      ],
+      [
+        "mb12",
+        "reflectivity"
+      ],
+      [
+        "mb12",
+        "tuning"
+      ],
+      [
+        "ml12sus",
+        "mass"
+      ],
+      [
+        "mr12sus",
+        "mass"
+      ],
+      [
+        "mt12sus",
+        "mass"
+      ],
+      [
+        "mb12sus",
+        "mass"
+      ],
+      [
+        "ml13",
+        "reflectivity"
+      ],
+      [
+        "ml13",
+        "tuning"
+      ],
+      [
+        "mr13",
+        "reflectivity"
+      ],
+      [
+        "mr13",
+        "tuning"
+      ],
+      [
+        "mt13",
+        "reflectivity"
+      ],
+      [
+        "mt13",
+        "tuning"
+      ],
+      [
+        "mb13",
+        "reflectivity"
+      ],
+      [
+        "mb13",
+        "tuning"
+      ],
+      [
+        "ml13sus",
+        "mass"
+      ],
+      [
+        "mr13sus",
+        "mass"
+      ],
+      [
+        "mt13sus",
+        "mass"
+      ],
+      [
+        "mb13sus",
+        "mass"
+      ],
+      [
+        "center21",
+        "reflectivity"
+      ],
+      [
+        "center21",
+        "tuning"
+      ],
+      [
+        "center21sus",
+        "mass"
+      ],
+      [
+        "ml21",
+        "reflectivity"
+      ],
+      [
+        "ml21",
+        "tuning"
+      ],
+      [
+        "mr21",
+        "reflectivity"
+      ],
+      [
+        "mr21",
+        "tuning"
+      ],
+      [
+        "mt21",
+        "reflectivity"
+      ],
+      [
+        "mt21",
+        "tuning"
+      ],
+      [
+        "mb21",
+        "reflectivity"
+      ],
+      [
+        "mb21",
+        "tuning"
+      ],
+      [
+        "ml21sus",
+        "mass"
+      ],
+      [
+        "mr21sus",
+        "mass"
+      ],
+      [
+        "mt21sus",
+        "mass"
+      ],
+      [
+        "mb21sus",
+        "mass"
+      ],
+      [
+        "center22",
+        "reflectivity"
+      ],
+      [
+        "center22",
+        "tuning"
+      ],
+      [
+        "center22sus",
+        "mass"
+      ],
+      [
+        "ml22",
+        "reflectivity"
+      ],
+      [
+        "ml22",
+        "tuning"
+      ],
+      [
+        "mr22",
+        "reflectivity"
+      ],
+      [
+        "mr22",
+        "tuning"
+      ],
+      [
+        "mt22",
+        "reflectivity"
+      ],
+      [
+        "mt22",
+        "tuning"
+      ],
+      [
+        "mb22",
+        "reflectivity"
+      ],
+      [
+        "mb22",
+        "tuning"
+      ],
+      [
+        "ml22sus",
+        "mass"
+      ],
+      [
+        "mr22sus",
+        "mass"
+      ],
+      [
+        "mt22sus",
+        "mass"
+      ],
+      [
+        "mb22sus",
+        "mass"
+      ],
+      [
+        "center23",
+        "reflectivity"
+      ],
+      [
+        "center23",
+        "tuning"
+      ],
+      [
+        "center23sus",
+        "mass"
+      ],
+      [
+        "ml23",
+        "reflectivity"
+      ],
+      [
+        "ml23",
+        "tuning"
+      ],
+      [
+        "mr23",
+        "reflectivity"
+      ],
+      [
+        "mr23",
+        "tuning"
+      ],
+      [
+        "mt23",
+        "reflectivity"
+      ],
+      [
+        "mt23",
+        "tuning"
+      ],
+      [
+        "mb23",
+        "reflectivity"
+      ],
+      [
+        "mb23",
+        "tuning"
+      ],
+      [
+        "ml23sus",
+        "mass"
+      ],
+      [
+        "mr23sus",
+        "mass"
+      ],
+      [
+        "mt23sus",
+        "mass"
+      ],
+      [
+        "mb23sus",
+        "mass"
+      ],
+      [
+        "ml31",
+        "reflectivity"
+      ],
+      [
+        "ml31",
+        "tuning"
+      ],
+      [
+        "mr31",
+        "reflectivity"
+      ],
+      [
+        "mr31",
+        "tuning"
+      ],
+      [
+        "mt31",
+        "reflectivity"
+      ],
+      [
+        "mt31",
+        "tuning"
+      ],
+      [
+        "mb31",
+        "reflectivity"
+      ],
+      [
+        "mb31",
+        "tuning"
+      ],
+      [
+        "ml31sus",
+        "mass"
+      ],
+      [
+        "mr31sus",
+        "mass"
+      ],
+      [
+        "mt31sus",
+        "mass"
+      ],
+      [
+        "mb31sus",
+        "mass"
+      ],
+      [
+        "center32",
+        "reflectivity"
+      ],
+      [
+        "center32",
+        "tuning"
+      ],
+      [
+        "center32sus",
+        "mass"
+      ],
+      [
+        "ml32",
+        "reflectivity"
+      ],
+      [
+        "ml32",
+        "tuning"
+      ],
+      [
+        "mr32",
+        "reflectivity"
+      ],
+      [
+        "mr32",
+        "tuning"
+      ],
+      [
+        "mt32",
+        "reflectivity"
+      ],
+      [
+        "mt32",
+        "tuning"
+      ],
+      [
+        "mb32",
+        "reflectivity"
+      ],
+      [
+        "mb32",
+        "tuning"
+      ],
+      [
+        "ml32sus",
+        "mass"
+      ],
+      [
+        "mr32sus",
+        "mass"
+      ],
+      [
+        "mt32sus",
+        "mass"
+      ],
+      [
+        "mb32sus",
+        "mass"
+      ],
+      [
+        "center33",
+        "reflectivity"
+      ],
+      [
+        "center33",
+        "tuning"
+      ],
+      [
+        "center33sus",
+        "mass"
+      ],
+      [
+        "ml33",
+        "reflectivity"
+      ],
+      [
+        "ml33",
+        "tuning"
+      ],
+      [
+        "mr33",
+        "reflectivity"
+      ],
+      [
+        "mr33",
+        "tuning"
+      ],
+      [
+        "mt33",
+        "reflectivity"
+      ],
+      [
+        "mt33",
+        "tuning"
+      ],
+      [
+        "mb33",
+        "reflectivity"
+      ],
+      [
+        "mb33",
+        "tuning"
+      ],
+      [
+        "ml33sus",
+        "mass"
+      ],
+      [
+        "mr33sus",
+        "mass"
+      ],
+      [
+        "mt33sus",
+        "mass"
+      ],
+      [
+        "mb33sus",
+        "mass"
+      ],
+      [
+        "m10",
+        "reflectivity"
+      ],
+      [
+        "m10",
+        "tuning"
+      ],
+      [
+        "m10sus",
+        "mass"
+      ],
+      [
+        "boundary10",
+        "power"
+      ],
+      [
+        "m10_ml11",
+        "length"
+      ],
+      [
+        "m14",
+        "reflectivity"
+      ],
+      [
+        "m14",
+        "tuning"
+      ],
+      [
+        "m14sus",
+        "mass"
+      ],
+      [
+        "boundary14",
+        "power"
+      ],
+      [
+        "mr13_m14",
+        "length"
+      ],
+      [
+        "m20",
+        "reflectivity"
+      ],
+      [
+        "m20",
+        "tuning"
+      ],
+      [
+        "m20sus",
+        "mass"
+      ],
+      [
+        "boundary20",
+        "db"
+      ],
+      [
+        "boundary20",
+        "angle"
+      ],
+      [
+        "m20_ml21",
+        "length"
+      ],
+      [
+        "m24",
+        "reflectivity"
+      ],
+      [
+        "m24",
+        "tuning"
+      ],
+      [
+        "m24sus",
+        "mass"
+      ],
+      [
+        "boundary24",
+        "power"
+      ],
+      [
+        "mr23_m24",
+        "length"
+      ],
+      [
+        "m30",
+        "reflectivity"
+      ],
+      [
+        "m30",
+        "tuning"
+      ],
+      [
+        "m30sus",
+        "mass"
+      ],
+      [
+        "boundary30",
+        "power"
+      ],
+      [
+        "m30_ml31",
+        "length"
+      ],
+      [
+        "m34",
+        "reflectivity"
+      ],
+      [
+        "m34",
+        "tuning"
+      ],
+      [
+        "m34sus",
+        "mass"
+      ],
+      [
+        "boundary34",
+        "db"
+      ],
+      [
+        "boundary34",
+        "angle"
+      ],
+      [
+        "mr33_m34",
+        "length"
+      ],
+      [
+        "m01",
+        "reflectivity"
+      ],
+      [
+        "m01",
+        "tuning"
+      ],
+      [
+        "m01sus",
+        "mass"
+      ],
+      [
+        "boundary01",
+        "power"
+      ],
+      [
+        "m01_mt11",
+        "length"
+      ],
+      [
+        "m41",
+        "reflectivity"
+      ],
+      [
+        "m41",
+        "tuning"
+      ],
+      [
+        "m41sus",
+        "mass"
+      ],
+      [
+        "boundary41",
+        "db"
+      ],
+      [
+        "boundary41",
+        "angle"
+      ],
+      [
+        "mb31_m41",
+        "length"
+      ],
+      [
+        "m02",
+        "reflectivity"
+      ],
+      [
+        "m02",
+        "tuning"
+      ],
+      [
+        "m02sus",
+        "mass"
+      ],
+      [
+        "boundary02",
+        "power"
+      ],
+      [
+        "m02_mt12",
+        "length"
+      ],
+      [
+        "m42",
+        "reflectivity"
+      ],
+      [
+        "m42",
+        "tuning"
+      ],
+      [
+        "m42sus",
+        "mass"
+      ],
+      [
+        "boundary42",
+        "db"
+      ],
+      [
+        "boundary42",
+        "angle"
+      ],
+      [
+        "mb32_m42",
+        "length"
+      ],
+      [
+        "m03",
+        "reflectivity"
+      ],
+      [
+        "m03",
+        "tuning"
+      ],
+      [
+        "m03sus",
+        "mass"
+      ],
+      [
+        "m03_mt13",
+        "length"
+      ],
+      [
+        "m43",
+        "reflectivity"
+      ],
+      [
+        "m43",
+        "tuning"
+      ],
+      [
+        "m43sus",
+        "mass"
+      ],
+      [
+        "boundary43",
+        "power"
+      ],
+      [
+        "mb33_m43",
+        "length"
+      ],
+      [
+        [
+          "mr11_ml12",
+          "length"
+        ],
+        [
+          "mr21_ml22",
+          "length"
+        ],
+        [
+          "mr31_ml32",
+          "length"
+        ]
+      ],
+      [
+        [
+          "mr12_ml13",
+          "length"
+        ],
+        [
+          "mr22_ml23",
+          "length"
+        ],
+        [
+          "mr32_ml33",
+          "length"
+        ]
+      ],
+      [
+        [
+          "mt21_mb11",
+          "length"
+        ],
+        [
+          "mt22_mb12",
+          "length"
+        ],
+        [
+          "mt23_mb13",
+          "length"
+        ]
+      ],
+      [
+        [
+          "mt31_mb21",
+          "length"
+        ],
+        [
+          "mt32_mb22",
+          "length"
+        ],
+        [
+          "mt33_mb23",
+          "length"
+        ]
+      ]
+    ]
+  },
+  "workload": {
+    "objective": "mean(log10(sensitivity / public_reference))",
+    "gradient_coordinates": "physical parameter values; public grid-length tying",
+    "optimizer_steps": 0,
+    "forward_residuals": "saved for separately compiled reverse pass",
+    "total_scope": "imports, CPU initialization, input I/O, setup, all lowering/compilation, forward, sensitivity/powers/loss, reverse-mode gradient and host transfer",
+    "excluded": "validation and benchmark harness bookkeeping, repeated profiling, plot/report generation; interpreter launch before the first timer"
+  },
+  "environment": {
+    "cpu_model": "AMD EPYC 9334 32-Core Processor",
+    "cpu_affinity_count": 1,
+    "cpu_affinity_ids": [
+      72
+    ],
+    "requested_logical_cpus": 1,
+    "logical_cpus_on_host": 128,
+    "platform": "Linux-6.8.0-79-generic-x86_64-with-glibc2.35",
+    "python": "3.12.15",
+    "packages": {
+      "differometor": "0.0.6",
+      "jax": "0.9.0",
+      "jaxlib": "0.9.0",
+      "numpy": "2.5.5",
+      "optax": "0.2.6"
+    },
+    "backend": "cpu",
+    "jax_enable_x64": true,
+    "persistent_compilation_cache": false,
+    "omp_num_threads": "1",
+    "xla_flags": "--xla_cpu_use_fusion_emitters=false --xla_backend_optimization_level=0",
+    "thread_limits": {
+      "OMP_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1"
+    }
+  },
+  "phases": [
+    {
+      "key": "imports",
+      "label": "Python / library imports",
+      "category": "setup",
+      "seconds": 0.25954575650393963
+    },
+    {
+      "key": "initialize",
+      "label": "Initialize CPU backend",
+      "category": "setup",
+      "seconds": 0.003298552706837654
+    },
+    {
+      "key": "load",
+      "label": "Read and parse public inputs",
+      "category": "setup",
+      "seconds": 0.001503797248005867
+    },
+    {
+      "key": "build",
+      "label": "Build optical setup and prepare inputs",
+      "category": "setup",
+      "seconds": 0.06313380785286427
+    },
+    {
+      "key": "forward_lower",
+      "label": "Forward: trace / lower",
+      "category": "compile",
+      "seconds": 0.010014183819293976
+    },
+    {
+      "key": "forward_compile",
+      "label": "Forward: compile",
+      "category": "compile",
+      "seconds": 0.008459968492388725
+    },
+    {
+      "key": "forward",
+      "label": "Forward simulation + AD residuals",
+      "category": "execute",
+      "seconds": 0.04696066863834858
+    },
+    {
+      "key": "sensitivity_lower",
+      "label": "Sensitivity: trace / lower",
+      "category": "compile",
+      "seconds": 0.022547457367181778
+    },
+    {
+      "key": "sensitivity_compile",
+      "label": "Sensitivity: compile",
+      "category": "compile",
+      "seconds": 0.03330833464860916
+    },
+    {
+      "key": "sensitivity",
+      "label": "Sensitivity, powers and scalar loss",
+      "category": "execute",
+      "seconds": 0.0016934536397457123
+    },
+    {
+      "key": "gradient_lower",
+      "label": "Gradient: trace / lower",
+      "category": "compile",
+      "seconds": 0.006571315228939056
+    },
+    {
+      "key": "gradient_compile",
+      "label": "Gradient: compile",
+      "category": "compile",
+      "seconds": 0.016316791996359825
+    },
+    {
+      "key": "gradient",
+      "label": "Reverse-mode gradient",
+      "category": "execute",
+      "seconds": 0.03565526381134987
+    },
+    {
+      "key": "host_transfer",
+      "label": "Transfer results to host",
+      "category": "output",
+      "seconds": 0.0001656077802181244
+    }
+  ],
+  "repeat_samples": [
+    {
+      "forward": 0.04715060628950596,
+      "sensitivity": 0.0009092707186937332,
+      "gradient": 0.034256746992468834,
+      "host_transfer": 0.00011884048581123352
+    },
+    {
+      "forward": 0.046016475185751915,
+      "sensitivity": 0.0007739532738924026,
+      "gradient": 0.03303965739905834,
+      "host_transfer": 0.00011109933257102966
+    },
+    {
+      "forward": 0.045839669182896614,
+      "sensitivity": 0.0007903110235929489,
+      "gradient": 0.03300277888774872,
+      "host_transfer": 0.00011719018220901489
+    },
+    {
+      "forward": 0.046753499656915665,
+      "sensitivity": 0.0008715633302927017,
+      "gradient": 0.03473983332514763,
+      "host_transfer": 0.00011492893099784851
+    },
+    {
+      "forward": 0.0471337866038084,
+      "sensitivity": 0.0007763020694255829,
+      "gradient": 0.03411460854113102,
+      "host_transfer": 0.00011641718447208405
+    },
+    {
+      "forward": 0.04630064219236374,
+      "sensitivity": 0.0008812621235847473,
+      "gradient": 0.03400710970163345,
+      "host_transfer": 0.00011490844190120697
+    },
+    {
+      "forward": 0.04603387601673603,
+      "sensitivity": 0.0008841417729854584,
+      "gradient": 0.034470925107598305,
+      "host_transfer": 0.0001174192875623703
+    },
+    {
+      "forward": 0.04578963480889797,
+      "sensitivity": 0.0008847787976264954,
+      "gradient": 0.027478745207190514,
+      "host_transfer": 0.00012037903070449829
+    },
+    {
+      "forward": 0.03351978212594986,
+      "sensitivity": 0.0008852519094944,
+      "gradient": 0.02753809094429016,
+      "host_transfer": 0.00011735968291759491
+    },
+    {
+      "forward": 0.03332526236772537,
+      "sensitivity": 0.0008910037577152252,
+      "gradient": 0.02770875208079815,
+      "host_transfer": 0.00011829100549221039
+    }
+  ],
+  "timing_seconds": {
+    "end_to_end": 0.5091749597340822,
+    "trace_lower_and_compile": 0.09721805155277252,
+    "runtime_samples": [
+      0.08243546448647976,
+      0.07994118519127369,
+      0.0797499492764473,
+      0.08247982524335384,
+      0.08214111439883709,
+      0.08130392245948315,
+      0.08150636218488216,
+      0.07427353784441948,
+      0.062060484662652016,
+      0.06204330921173096
+    ],
+    "runtime_median": 0.08062255382537842,
+    "runtime_min": 0.06204330921173096,
+    "runtime_max": 0.08247982524335384,
+    "phase_runtime_medians": {
+      "forward": 0.04602517560124397,
+      "sensitivity": 0.0008827019482851028,
+      "gradient": 0.0335233835503459,
+      "host_transfer": 0.0001172749325633049
+    }
+  },
+  "validation": {
+    "all_outputs_and_gradients_finite": true,
+    "upstream_sensitivity_check_passed": true,
+    "max_absolute_log_sensitivity_error": 5.374265420243773e-06,
+    "gradient_check": {
+      "parameter": "mb11.tuning",
+      "autodiff": 7.616168433616249e-05,
+      "finite_differences": [
+        {
+          "step": 0.001,
+          "central_difference": 7.616655359789852e-05,
+          "absolute_error": 4.8692617360325974e-09
+        },
+        {
+          "step": 0.0005,
+          "central_difference": 7.615740509462822e-05,
+          "absolute_error": 4.279241534269084e-09
+        }
+      ],
+      "rtol": 0.01,
+      "atol": 1e-06,
+      "passed": true
+    },
+    "gradient_shape": [
+      193
+    ],
+    "gradient_norm": 70517.10080939373,
+    "loss": 9.723837036205856e-08,
+    "output_shapes": {
+      "carrier": [
+        286,
+        1
+      ],
+      "signal": [
+        751,
+        101
+      ],
+      "noise": [
+        101
+      ]
+    },
+    "output_dtypes": {
+      "carrier": "complex128",
+      "signal": "complex128",
+      "noise": "float64"
+    }
+  }
+}

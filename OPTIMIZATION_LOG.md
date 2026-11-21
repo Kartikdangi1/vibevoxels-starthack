@@ -21,8 +21,14 @@ was run at least twice; all runs are listed.
 | E8 | VJP by transposing JAX's JVP program (cheaper tracing) | 0.591 / 0.632 | 0.13 | 5.374e-6 | INTEGRATED | 0c64f2b |
 | E9 | Challenger fixes: rank alignment, real cotangents, self-check, referenced links only | 0.616 / 0.647 / 0.732 | 0.12 | 5.374e-6 | INTEGRATED | bc8ad3c |
 | E10 | native C++ batched sparse LU (`differometor/native`), branch `cpp-implementation` | WSL i5: see E10 section | WSL i5: 0.26–0.28 → 0.14–0.16 | 5.374e-6 | CANDIDATE | — |
+| E11 | XLA:CPU classic emitters set from `differometor/__init__.py` (`DIFFEROMETOR_XLA_FLAGS`) | EPYC: 0.656 → 0.585 (`fast`: 0.509) | EPYC: 0.0834 → 0.0813 | 5.374e-6 | INTEGRATED (`exact` default; `fast` opt-in) | — |
+| E12 | C++ solver built with `-march=native -ffp-contract=off` (bit-identical) | (in E11's number) factor 29.7 → 24.3 ms on i7 | — | 5.374e-6 | INTEGRATED | — |
 
-Overall: **24.889 s → ~0.62 s (≈40×)** first run; warm 12.13 s → 0.12 s (≈100×).
+Overall (M2 rows above): **24.889 s → ~0.62 s (≈40×)** first run; warm 12.13 s → 0.12 s (≈100×).
+
+**Final, one session on AMD EPYC 9334, 1 CPU** ([`results/amd-epyc-final/comparison.txt`](results/amd-epyc-final/comparison.txt),
+3 runs × 10 warm repeats per variant, all 21 runs PASS): baseline **35.283 s → 0.585 s first run
+(60.3×)**, `fast` mode 0.509 s (69.3×); XLA compile 19.234 → 0.171 s; warm 15.477 → 0.0813 s (190×).
 The 5.374e-6 public error equals the upstream code's own error against the reference.
 
 ## E5 phase breakdown (run 3, 0.730 s)
@@ -162,6 +168,25 @@ forces SuperLU).
   `$CXX`, `c++`, `g++` or `clang++`, else the `ziglang` pip package. If no compiler is found, the
   install still succeeds and SuperLU is used. Nothing is compiled at run time.
 
+**E11 — cheaper XLA compilation.** After E10 the largest phase we could still change was
+XLA compiling the benchmark's readout and gradient programs (EPYC: 0.217 s of 0.656 s).
+Those programs are tiny (234 and 158 HLO lines, 9 and 5 fusions), so the cost is fixed
+code generation per fusion. `differometor/__init__.py` appends
+`--xla_cpu_use_fusion_emitters=false` to `XLA_FLAGS` before the CPU backend starts (XLA
+reads the variable when the client is created, which the benchmark does after importing
+us). It never overrides a flag the user set. The result is bit-identical on every saved
+array. `DIFFEROMETOR_XLA_FLAGS=fast` adds `--xla_backend_optimization_level=0`, which cuts
+compile about 3× in total, but one sensitivity moves by 1 ulp, so it is opt-in.
+`DIFFEROMETOR_XLA_FLAGS=0` restores XLA's defaults. Details, the flags that did not help,
+and the evidence: [docs/notes/xla_and_native_flags.md](docs/notes/xla_and_native_flags.md).
+
+**E12 — CPU-tuned solver build.** `differometor/native/build.py` compiles `dfsparse.cpp`
+with `-march=native -ffp-contract=off`. Turning FMA contraction off keeps every operation's
+rounding identical to the portable build: the output is bit-identical, while plain
+`-march=native` differed by up to 5e-4 and was rejected. Factorisation of the 101 signal
+systems went from 29.7 to 24.3 ms. A compiler that rejects the flags is retried without
+them; `DIFFEROMETOR_NATIVE_PORTABLE=1` builds the portable library.
+
 ## Generality evidence (E5; unchanged in E9, [`results/generality-e9.jsonl`](results/generality-e9.jsonl))
 
 20 log-spaced frequencies (3 Hz – 3 kHz) per case. The comparisons are host path vs original
@@ -214,7 +239,22 @@ python benchmark.py --repeats 3 --output benchmark-check.json            # macOS
 DIFFEROMETOR_BACKEND=jax python benchmark.py --repeats 3 --output check-jax.json  # in-graph fallback path
 DIFFEROMETOR_NATIVE=0 python benchmark.py --repeats 3 --output check-superlu.json  # host path with SuperLU instead of the C++ solver
 python tests/check_native_solver.py  # C++ solver vs SuperLU vs JAX on 12 topologies
+DIFFEROMETOR_XLA_FLAGS=0 python benchmark.py --cpus 1 --repeats 3 --output check-xla-default.json  # before E11
+DIFFEROMETOR_XLA_FLAGS=fast python benchmark.py --cpus 1 --repeats 3 --output check-xla-fast.json  # E11 opt-in mode
+DIFFEROMETOR_NATIVE_PORTABLE=1 python differometor/native/build.py  # solver without the E12 tuning
 ```
+
+### Runtime switches (all default to the fastest correct path)
+
+| Variable | Values | Effect |
+|---|---|---|
+| `DIFFEROMETOR_BACKEND` | `host` (default), `jax` | host simulation vs the in-graph sparse JAX path |
+| `DIFFEROMETOR_NATIVE` | `1` (default), `0` | C++ `dfsparse` solver vs SciPy SuperLU |
+| `DIFFEROMETOR_KERNELS` | `all` (default), `none`, or comma-separated function names | closed-form component kernels vs JAX-traced jaxprs |
+| `DIFFEROMETOR_REFINE` | `1` (default), `0` | SuperLU path: iterative-refinement steps per solve |
+| `DIFFEROMETOR_XLA_FLAGS` | `exact` (default), `fast`, `0` | E11 XLA compile flags |
+| `DIFFEROMETOR_NATIVE_PORTABLE` | unset (default), `1` | build time only: E12 tuning off |
+| `DIFFEROMETOR_NATIVE_FLAGS` | extra compiler flags | build time only: appended to the solver build |
 
 ## Challenger — final audit of the integrated submission (HEAD after E9): **APPROVE**
 

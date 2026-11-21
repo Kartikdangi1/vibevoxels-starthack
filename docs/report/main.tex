@@ -12,6 +12,9 @@
 \usepackage[colorlinks=true,linkcolor=blue!60!black,citecolor=blue!60!black,urlcolor=blue!60!black]{hyperref}
 
 \graphicspath{{figures/}}
+% Long \texttt identifiers (file names, env vars) cannot hyphenate: let lines stretch instead of overflowing.
+\setlength{\emergencystretch}{3em}
+\sloppy
 
 \title{\textbf{Faster Differentiable Interferometry from Scratch:}\\
 \large Combining a 15-Year Literature Scan, Native C++ Batched Sparse LU, Wirtinger-Dual Component Kernels, Adjoint Identities, and Host-Side Readout in \texttt{Differometor}}
@@ -22,7 +25,7 @@
 \maketitle
 
 \begin{abstract}
-We document the \texttt{final/combined-v2} branch of \texttt{Differometor}, unifying our 15-year automated literature scan (2,342 papers, 2011--2026), five literature-backed algorithmic optimizations, host-side \texttt{jaxpr} execution with primal caching, native Wirtinger-dual component kernels (\texttt{native\_kernels.py}), host-side readout detectors (\texttt{components.py}), and a custom C++ Gilbert--Peierls batched sparse LU solver with KLU-style pivot reuse (\texttt{differometor/native/dfsparse.cpp}). On the \texttt{uifo\_800\_3000} gravitational-wave interferometer benchmark (101 frequencies, 193 design parameters, \textbf{1 logical CPU}, \texttt{complex128}/\texttt{float64}), apples-to-apples measurements on an AMD EPYC 9334 cut median warm execution from \textbf{16.952\,s} (baseline) to \textbf{0.0969\,s} (\textbf{174.9$\times$ faster}), XLA compilation from \textbf{19.301\,s} to \textbf{0.348--0.524\,s} (\textbf{37--55$\times$ faster}), and first-run end-to-end wall time from \textbf{35.829\,s} to \textbf{0.895--0.964\,s} (\textbf{37.2--40.0$\times$ faster}). Log-sensitivity error remains $5.374\times 10^{-6}$ (identical to baseline, within the $10^{-5}$ bar), finite-difference gradient agreement holds to $4.5\times 10^{-9}$ ($h=0.0005$), and \texttt{DIFFEROMETOR\_NATIVE=0} (SuperLU) and \texttt{DIFFEROMETOR\_BACKEND=jax} (in-graph sparse JAX) remain as automatic fallbacks.
+We document the \texttt{final/combined-v2} branch of \texttt{Differometor}, unifying our 15-year automated literature scan (2,342 papers, 2011--2026), five literature-backed algorithmic optimizations, host-side \texttt{jaxpr} execution with primal caching, native Wirtinger-dual component kernels (\texttt{native\_kernels.py}), host-side readout detectors (\texttt{components.py}), and a custom C++ Gilbert--Peierls batched sparse LU solver with KLU-style pivot reuse (\texttt{differometor/native/dfsparse.cpp}). The final build also compiles XLA's remaining small programs more cheaply (E11) and builds the C++ solver for the host CPU without changing a single rounding (E12). On the \texttt{uifo\_800\_3000} gravitational-wave interferometer benchmark (101 frequencies, 193 design parameters, \textbf{1 logical CPU}, \texttt{complex128}/\texttt{float64}), we measured every variant in \textbf{one session on one pinned core of an AMD EPYC 9334} (3 runs $\times$ 10 warm repeats each, \texttt{results/amd-epyc-final/}). The complete first run, the scored number, drops from \textbf{35.283\,s} to \textbf{0.585\,s} (\textbf{60.3$\times$ faster}; \textbf{0.509\,s}, 69.3$\times$, with the opt-in \texttt{fast} XLA mode). XLA compilation drops from \textbf{19.234\,s} to \textbf{0.171\,s} (112$\times$), and median warm evaluation drops from \textbf{15.477\,s} to \textbf{0.0813\,s} (\textbf{190$\times$}). All 21 runs pass the benchmark's checks: the log-sensitivity error is $5.374\times 10^{-6}$ (the same as the unmodified baseline, within the $10^{-5}$ bar), the gradient matches a central finite difference to $4.3\times 10^{-9}$ ($h=0.0005$), and the gradient's cosine similarity to the baseline's is $1.0000000000$. \texttt{DIFFEROMETOR\_NATIVE=0} (SuperLU) and \texttt{DIFFEROMETOR\_BACKEND=jax} (in-graph sparse JAX) remain available as fallbacks.
 \end{abstract}
 
 % ==============================================================================
@@ -52,7 +55,7 @@ Every technical term used in this report is defined below in plain words before 
 \section{The Problem \& The 15-Year Literature Scan (2011--2026)}
 % ==============================================================================
 
-The \texttt{uifo\_800\_3000} benchmark evaluates a $3\times 3$ Universal Interferometer topology across $V = 101$ frequencies ($800$--$3000\,\text{Hz}$) and $P = 193$ physical parameters on \textbf{1 logical CPU} in double precision (\texttt{complex128} / \texttt{float64}). On an AMD EPYC 9334 (1 CPU, \texttt{results/amd-epyc/baseline\_cpu1.json}), the unmodified baseline takes \textbf{35.829\,s} end-to-end: 0.997\,s for imports and setup, 19.301\,s for XLA lowering and compilation, and 15.532\,s for first-run execution (16.952\,s median warm execution). On the Intel Xeon Platinum 8468 reference (\texttt{benchmarks/cpu-baseline.json}), it takes \textbf{44.204\,s} end-to-end (22.918\,s compile, 17.679\,s warm median).
+The \texttt{uifo\_800\_3000} benchmark evaluates a $3\times 3$ Universal Interferometer topology across $V = 101$ frequencies ($800$--$3000\,\text{Hz}$) and $P = 193$ physical parameters on \textbf{1 logical CPU} in double precision (\texttt{complex128} / \texttt{float64}). On an AMD EPYC 9334 (1 CPU, \texttt{results/amd-epyc-final/baseline\_\{1,2,3\}.json}), the unmodified baseline takes \textbf{35.283\,s} end-to-end (median of 3 runs, range 35.223--35.307\,s): 0.972\,s for imports and setup, 19.234\,s for XLA lowering and compilation, and 15.079\,s for first-run execution (15.477\,s median warm evaluation). On the Intel Xeon Platinum 8468 reference (\texttt{benchmarks/cpu-baseline.json}), it takes \textbf{44.204\,s} end-to-end (22.918\,s compile, 17.679\,s warm median).
 
 To ground our optimizations in published methods, we ran an automated 15-year literature scan using \textbf{Eidothea} across arXiv (2011--2026), Semantic Scholar, and the 99-page \texttt{Differometor} documentation. Extending our initial 10-year scan (1,067 papers, 13 subfields) to 15 years harvested \textbf{2,342 unique papers}, \textbf{37,826 arXiv reference edges}, and \textbf{27 subfields} across 6 taxonomy groups: \textbf{A.~Interferometry}, \textbf{B.~Sparse Solvers}, \textbf{C.~Autodiff \& Adjoint}, \textbf{D.~JAX \& Compiler}, \textbf{E.~Host \& Numerics}, and \textbf{F.~Cross-Domain}.
 
@@ -67,8 +70,9 @@ Figure~\ref{fig:literature} summarizes the 15-year trajectory, and Table~\ref{ta
 
 \begin{table}[ht]
 \centering
-\small
-\begin{tabular}{@{}cllp{0.23\linewidth}@{}}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}cp{0.27\linewidth}p{0.36\linewidth}p{0.24\linewidth}@{}}
 \toprule
 \textbf{Step} & \textbf{Optimization} & \textbf{Verified Literature Backing} & \textbf{Target File(s)} \\
 \midrule
@@ -167,15 +171,17 @@ requiring only $101 \times 272 = \mathbf{27,472}$ ops---\textbf{2,074$\times$ fe
 Figure~\ref{fig:pipeline} contrasts the baseline dense pipeline with \texttt{final/combined-v2}, which integrates all four team workstreams into one coherent architecture:
 
 \begin{enumerate}[leftmargin=1.6em,itemsep=3pt]
-    \item \textbf{Single \texttt{custom\_vjp} Host Execution \& Primal Caching (\texttt{differometor/host.py}):} The entire simulation runs in NumPy/C++ inside one \texttt{jax.custom\_vjp} (with primal environment and trace caching), eliminating XLA compilation of the matrix-assembly and reverse-mode graphs. Matrix writes are grouped by component function at build time (no \texttt{lax.switch}), sweep-independent groups are hoisted, and narrow component groups (e.g.\ carrier-side \texttt{space} with 3 inputs) are zero-padded and sliced cleanly.
-    \item \textbf{Native Wirtinger-Dual Component Kernels (\texttt{differometor/native\_kernels.py}):} Tracing 16 component functions via \texttt{jax.make\_jaxpr} and self-checking them at startup still cost $\sim$82\,ms of first-run \texttt{forward\_lower} time. \texttt{native\_kernels.py} replaces all 19 built-in component functions with closed-form NumPy kernels using a sparse Wirtinger dual number $y = f(x)$, $dy = \sum_i (A_i\,dx_i + B_i\,\overline{dx}_i)$ and exact VJP $\text{ct}(x_i) = \sum_k (A_{ki}\,\text{ct}(y_k) + \overline{B_{ki}\,\text{ct}(y_k)})$. On an Apple M2, this cut \texttt{forward\_lower} from 92.6\,ms to 10.5\,ms. Any user-modified or custom function automatically falls back to \texttt{jax.jvp} transposition (`DIFFEROMETOR\_KERNELS=0` forces tracing).
-    \item \textbf{Native C++ Batched Sparse LU with KLU-Style Pivot Reuse (\texttt{differometor/native/dfsparse.cpp}):} Compiled during \texttt{pip install -e .} and loaded via \texttt{ctypes} (`NativeBatchedLU`), \texttt{dfsparse.cpp} replaces SciPy's SuperLU on the host path:
+    \item \textbf{Single \texttt{custom\_vjp} Host Execution \& Primal Caching (\texttt{differometor/host.py}):} The entire simulation runs in NumPy/C++ inside one \texttt{jax.custom\_vjp} (with primal environment and trace caching), eliminating XLA compilation of the matrix-assembly and reverse-mode graphs. Matrix writes are grouped by component function at build time (no \texttt{lax.switch}), sweep-independent groups are hoisted, and narrow component groups (e.g.\ carrier-side \texttt{space} with 3 inputs) are zero-padded and sliced cleanly. The reverse pass accumulates repeated-index cotangents with \texttt{np.bincount} (\texttt{\_scatter\_add}) instead of the much slower \texttt{np.add.at}.
+    \item \textbf{Native Wirtinger-Dual Component Kernels (\texttt{differometor/native\_kernels.py}):} Tracing 16 component functions via \texttt{jax.make\_jaxpr} and self-checking them at startup still cost $\sim$82\,ms of first-run \texttt{forward\_lower} time. \texttt{native\_kernels.py} replaces all 19 built-in component functions with closed-form NumPy kernels using a sparse Wirtinger dual number $y = f(x)$, $dy = \sum_i (A_i\,dx_i + B_i\,\overline{dx}_i)$ and exact VJP $\text{ct}(x_i) = \sum_k (A_{ki}\,\text{ct}(y_k) + \overline{B_{ki}\,\text{ct}(y_k)})$. On an Apple M2, this cut \texttt{forward\_lower} from 92.6\,ms to 10.5\,ms. Any user-modified or custom function automatically falls back to \texttt{jax.jvp} transposition (\texttt{DIFFEROMETOR\_KERNELS=none} forces tracing).
+    \item \textbf{Native C++ Batched Sparse LU with KLU-Style Pivot Reuse (\texttt{differometor/native/dfsparse.cpp}):} Compiled during \texttt{pip install -e .} and loaded via \texttt{ctypes} (\texttt{NativeBatchedLU}), \texttt{dfsparse.cpp} replaces SciPy's SuperLU on the host path:
     \begin{itemize}[leftmargin=1.2em,itemsep=1pt]
         \item \emph{Gilbert--Peierls left-looking LU:} Uses minimum-degree column ordering on $A + A^T$ computed once per sparsity pattern (avoiding $A^T A$ ordering, which loses accuracy on ill-conditioned topologies like Voyager).
         \item \emph{KLU-style pivot reuse:} Frequency 0 is pivoted with partial pivoting (\texttt{PIVOT\_TOL = 1.0}); each subsequent frequency reuses the previous pivot order and $L/U$ pattern whenever every reused pivot satisfies $\ge 0.1\times$ the largest entry below it (\texttt{REUSE\_TOL = 0.1}), otherwise pivoting afresh. On \texttt{uifo\_800\_3000}, all 100 subsequent frequencies reuse the pattern.
         \item \emph{Refinement \& fallback:} Every \texttt{N}/\texttt{T}/\texttt{H} solve applies 1 step of fixed-precision sparse iterative refinement (matching \texttt{RefinedLU} on ill-conditioned setups where $\kappa \sim 10^{31}$), singular blocks emit local \texttt{NaN}s, and \texttt{DIFFEROMETOR\_NATIVE=0} falls back to block-diagonal \texttt{\_superlu}.
     \end{itemize}
-    \item \textbf{Host-Side Readout Detectors (\texttt{differometor/components.py}):} \texttt{signal\_detector} and \texttt{power\_detector} now execute in NumPy behind \texttt{jax.custom\_vjp} with hand-written adjoints, cutting sensitivity compilation and warm readout time (`0.250\,s` $\to$ `0.0002--0.0008\,s`).
+    \item \textbf{Host-Side Readout Detectors (\texttt{differometor/components.py}):} \texttt{signal\_detector} and \texttt{power\_detector} now execute in NumPy behind \texttt{jax.custom\_vjp} with hand-written adjoints, cutting sensitivity compilation and warm readout time (0.250\,s $\to$ 0.0002--0.0008\,s).
+    \item \textbf{Cheaper XLA Code Generation (E11, \texttt{differometor/\_\_init\_\_.py}):} After the steps above, XLA compiles only the benchmark's readout and gradient programs. They are tiny (234 and 158 HLO lines; 9 and 5 fusions), yet they still took $\sim$0.2\,s, because the cost is fixed code generation per fusion. Before the CPU backend starts, the package appends \texttt{-{}-xla\_cpu\_use\_fusion\_emitters=false} to \texttt{XLA\_FLAGS}, which selects XLA's classic LLVM emitters (same math, cheaper to compile). XLA reads the variable when the CPU client is created, which the benchmark does after importing us. Flags the user set are never overridden, and the active flags are recorded in every benchmark JSON. The outputs are \textbf{bit-identical} on every saved array. \texttt{DIFFEROMETOR\_XLA\_FLAGS=fast} adds \texttt{-{}-xla\_backend\_optimization\_level=0} (about 3$\times$ less compile in total, but one of 101 sensitivities moves by 1\,ulp, so it is opt-in); \texttt{=0} restores XLA's defaults.
+    \item \textbf{CPU-Tuned, Bit-Identical Solver Build (E12, \texttt{differometor/native/build.py}):} \texttt{dfsparse.cpp} is compiled at install time on the benchmark machine with \texttt{-march=native -ffp-contract=off}. Wider SIMD instructions are allowed, but fused multiply--add contraction is forbidden, so every floating-point operation rounds exactly as in the portable build. The factorisation of the 101 signal systems is $\sim$17\% faster with identical results. Plain \texttt{-march=native} (FMA allowed) changed results by up to $5\times 10^{-4}$ on ill-conditioned systems and was rejected. A compiler that rejects the flags is retried without them; \texttt{DIFFEROMETOR\_NATIVE\_PORTABLE=1} builds the portable library.
     \item \textbf{In-Graph JAX Fallback (\texttt{DIFFEROMETOR\_BACKEND=jax}):} Routes execution to the in-graph sparse JAX path (\texttt{sparse\_solve.py} + \texttt{simulate.py}), restoring full JAX autodiff (\texttt{jacfwd}, \texttt{hessian}, and gradients w.r.t.\ non-\texttt{optimized\_parameters} inputs).
 \end{enumerate}
 
@@ -187,51 +193,69 @@ Figure~\ref{fig:pipeline} contrasts the baseline dense pipeline with \texttt{fin
 
 \begin{enumerate}[leftmargin=1.6em,itemsep=2pt]
     \item \textbf{Backend \& readout parity (\texttt{tests/test\_backends.py}, \texttt{tests/test\_host\_detectors.py}):} Verifies that the default host path and host detectors match the in-graph JAX path in forward values ($\le 10^{-14}$) and reverse-mode gradients ($\le 10^{-12}$) on \texttt{aligo}, \texttt{voyager}, and a swept Fabry--P\'erot cavity.
-    \item \textbf{Native kernel \& C++ solver verification (\texttt{tests/check\_native.py}, \texttt{tests/check\_native\_solver.py}):} All 19 Wirtinger-dual kernels match \texttt{jax.vjp} to $\le 10^{-10}$ (worst $6.9\times 10^{-15}$ on component parameters; `components.py` SHA-256 pinned), and \texttt{dfsparse.cpp} matches SuperLU and JAX across 12 topologies (aLIGO $\times 3$ modes, Voyager $\times 3$, UIFO fixtures, and 4 random UIFOs).
+    \item \textbf{Native kernel \& C++ solver verification (\texttt{tests/check\_native.py}, \texttt{tests/check\_native\_solver.py}):} All 19 Wirtinger-dual kernels match \texttt{jax.vjp} to $\le 10^{-10}$ (worst $6.9\times 10^{-15}$ on component parameters; \texttt{components.py} SHA-256 pinned), and \texttt{dfsparse.cpp} matches SuperLU and JAX across 12 topologies (aLIGO $\times 3$ modes, Voyager $\times 3$, UIFO fixtures, and 4 random UIFOs).
     \item \textbf{50-digit reference checks (\texttt{results/generality-e9.jsonl}):} On ill-conditioned cases where dense LAPACK loses accuracy, sparse iterative refinement is more accurate than dense: random UIFO seed 1 ($2.2\times 10^{-10}$ vs.\ $1.1\times 10^{-3}$ dense log error) and Voyager AM ($2.2\times 10^{-6}$ vs.\ $1.8\times 10^{-4}$ dense).
-    \item \textbf{Full \texttt{uifo\_800\_3000} benchmark (\texttt{benchmark-v2.json} \& \texttt{results/amd-epyc/cpp\_cpu1.json}):}
+    \item \textbf{Full \texttt{uifo\_800\_3000} benchmark, final session (\texttt{results/amd-epyc-final/}, 21 runs, all \texttt{PASS}):}
     \begin{itemize}[leftmargin=1.2em,itemsep=1pt]
         \item \texttt{max\_absolute\_log\_sensitivity\_error}: $5.3743\times 10^{-6}$ (baseline: $5.3741\times 10^{-6}$; required $\le 10^{-5}$).
-        \item \texttt{mb11.tuning} gradient check (\texttt{benchmark-v2.json}): autodiff $7.61617\times 10^{-5}$ vs.\ central finite difference $7.61664\times 10^{-5}$ ($h=0.001$, err $4.73\times 10^{-9}$) and $7.61572\times 10^{-5}$ ($h=0.0005$, err $4.52\times 10^{-9}$, passed).
-        \item Numeric agreement vs.\ baseline on EPYC 9334 (\texttt{results/amd-epyc/comparison.txt}): $\max|\Delta\log S| = 6.717\times 10^{-8}$, gradient relative error $8.675\times 10^{-8}$, cosine similarity $1.0000000000$.
+        \item \texttt{mb11.tuning} gradient check (\texttt{final\_1.json}): autodiff $7.61617\times 10^{-5}$ vs.\ central finite difference $7.61666\times 10^{-5}$ ($h=0.001$, err $4.87\times 10^{-9}$) and $7.61574\times 10^{-5}$ ($h=0.0005$, err $4.28\times 10^{-9}$, passed). The unmodified baseline's errors in the same check are $4.85\times 10^{-7}$ and $6.97\times 10^{-8}$.
+        \item Numeric agreement of the final build with the baseline's saved arrays (\texttt{comparison.txt}): $\max|\Delta\log S| = 6.717\times 10^{-8}$, gradient relative error $8.613\times 10^{-8}$, cosine similarity $1.0000000000$.
+        \item E11 and E12 change no output: with the \texttt{exact} XLA flags, every saved array is bit-identical to XLA's defaults, and the E12 solver build produced the identical \texttt{check\_native\_solver.py} report on all 12 topologies. The final build differs from the committed v2 only in the gradient ($8\times 10^{-10}$ relative), which comes from the \texttt{np.bincount} scatter's summation order. The \texttt{fast} mode changes one of 101 sensitivities by 1\,ulp ($2.2\times 10^{-16}$).
     \end{itemize}
 \end{enumerate}
 
-\subsection{Apples-to-Apples Benchmark Comparison (AMD EPYC 9334, 1 CPU)}
+\subsection{One-Session Benchmark of Every Variant (AMD EPYC 9334, 1 CPU)}
 
 \begin{figure}[t]
     \centering
     \includegraphics[width=\linewidth]{fig2_benchmark_comparison.pdf}
-    \caption{Benchmark comparison on \texttt{uifo\_800\_3000} (1 logical CPU). (a)~On AMD EPYC 9334 (\texttt{results/amd-epyc/}), median warm execution drops from 16.952\,s to 0.0969\,s ($174.9\times$ speedup). (b)~First-run end-to-end on EPYC 9334 drops from 35.829\,s to 0.895--0.964\,s ($37.2$--$40.0\times$ speedup). (c)~On i7-1355U WSL2, \texttt{final/combined-v2} (\texttt{benchmark-v2.json}) cuts first-run end-to-end from 3.97\,s to 3.18\,s ($-20\%$) and XLA compile from 1.52\,s to 0.87\,s ($-43\%$) vs.\ \texttt{final/combined}. Best viewed in color.}
+    \caption{Every variant measured in one session on one pinned core of an AMD EPYC 9334 (\texttt{results/amd-epyc-final/}; medians of 3 runs, each with 10 warm repeats). (a)~Median warm evaluation: 15.48\,s $\to$ 0.081\,s ($190\times$). (b)~Complete first run, the scored number: 35.3\,s $\to$ 0.585\,s ($60\times$). (c)~Zoom on the optimised variants: imports and setup ($\sim$0.33\,s, mostly \texttt{import jax}) are now the largest block, and the final build's E11 flags cut XLA compile from 0.238\,s to 0.171\,s. Generated from the JSON files by \texttt{figures/scripts/generate\_all\_figures.py}. Best viewed in color.}
     \label{fig:benchmarks}
 \end{figure}
 
-Figure~\ref{fig:benchmarks} and Table~\ref{tab:benchmarks} report apples-to-apples 1-CPU measurements on the same AMD EPYC 9334 machine (\texttt{results/amd-epyc/}). On the local i7-1355U WSL2 laptop (\texttt{benchmark-v2.json}), the combined v2 branch achieves \textbf{3.180\,s} first-run end-to-end and \textbf{0.865\,s} XLA compile (with warm samples reaching \textbf{0.127\,s} at the end of the 10-repeat run). \emph{Known limitations:} The default host path supports reverse-mode AD, \texttt{jit}, \texttt{vmap}, and \texttt{checkpoint}, but does not support forward-mode AD (\texttt{jacfwd}, \texttt{hessian}) or gradients w.r.t.\ inputs other than \texttt{optimized\_parameters}; set \texttt{DIFFEROMETOR\_BACKEND=jax} when those are needed.
+Figure~\ref{fig:benchmarks} and Table~\ref{tab:benchmarks} come from one benchmark session (\texttt{results/amd-epyc-final/run\_final.sh}). All seven variants ran on the same machine and the same core (\texttt{taskset -c 72}, \texttt{benchmark.py -{}-cpus 1 -{}-repeats 10}), interleaved over three rounds, so drift on the shared host affects every variant alike. The run-to-run spread is below 2\% for every optimised variant. All variants use the same Python 3.12.15 / JAX 0.9.0 / NumPy 2.5.5 / SciPy 1.18.1 environment. The milestone columns are the team's intermediate branches, each built on the v1 host path; \emph{combined-v2} is the committed branch head, \emph{Final} adds E11, E12 and the \texttt{bincount} scatter, and \emph{Final (fast)} is the same code with \texttt{DIFFEROMETOR\_XLA\_FLAGS=fast}. \emph{Known limitations:} The default host path supports reverse-mode AD, \texttt{jit}, \texttt{vmap}, and \texttt{checkpoint}, but does not support forward-mode AD (\texttt{jacfwd}, \texttt{hessian}) or gradients w.r.t.\ inputs other than \texttt{optimized\_parameters}; set \texttt{DIFFEROMETOR\_BACKEND=jax} when those are needed.
 
 \begin{table}[h]
 \centering
 \small
-\begin{tabular}{@{}lrrrrr@{}}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lrrrrrrr@{}}
 \toprule
-\textbf{Phase} & \textbf{Baseline} & \textbf{v1 Host} & \textbf{+ Native} & \textbf{+ Host} & \textbf{+ C++ LU} \\
- & \textbf{(JAX Dense)} & \textbf{(SuperLU)} & \textbf{Kernels} & \textbf{Readout} & \textbf{(\texttt{dfsparse})} \\
+\textbf{Phase (s)} & \textbf{Baseline} & \textbf{C++ LU} & \textbf{Native} & \textbf{Host} & \textbf{combined-} & \textbf{Final} & \textbf{Final} \\
+ & \textbf{(upstream)} & \textbf{(\texttt{dfsparse})} & \textbf{kernels} & \textbf{readout} & \textbf{v2 (HEAD)} & & \textbf{(fast)} \\
 \midrule
-Imports \& Setup & 0.997\,s & 0.331\,s & 0.338\,s & 0.337\,s & 0.328\,s \\
-XLA Trace / Lower / Compile & 19.301\,s & 0.509\,s & 0.406\,s & 0.348\,s & 0.524\,s \\
+Imports \& setup & 0.972 & 0.328 & 0.335 & 0.335 & 0.328 & 0.328 & 0.328 \\
+XLA trace/lower/compile & 19.234 & 0.511 & 0.396 & 0.345 & 0.238 & \textbf{0.171} & 0.097 \\
 \midrule
-Warm Forward (median) & 13.360\,s & 0.115\,s & 0.097\,s & 0.111\,s & \textbf{0.0427\,s} \\
-Warm Sensitivity (median) & 0.250\,s & 0.0002\,s & 0.0002\,s & 0.0008\,s & \textbf{0.0002\,s} \\
-Warm Gradient (median) & 3.010\,s & 0.045\,s & 0.050\,s & 0.059\,s & \textbf{0.0503\,s} \\
-\textbf{Warm Total (median)} & \textbf{16.952\,s} & \textbf{0.160\,s} & \textbf{0.147\,s} & \textbf{0.173\,s} & \textbf{0.0969\,s} \\
-\textbf{Warm Speedup} & 1.0$\times$ & 105.8$\times$ & 115.2$\times$ & 98.1$\times$ & \textbf{174.9$\times$} \\
+Warm forward & 12.293 & 0.0432 & 0.0977 & 0.1047 & 0.0462 & 0.0467 & 0.0467 \\
+Warm sensitivity & 0.2398 & 0.0002 & 0.0002 & 0.0008 & 0.0009 & 0.0009 & 0.0009 \\
+Warm gradient & 2.937 & 0.0492 & 0.0498 & 0.0590 & 0.0359 & 0.0341 & 0.0340 \\
+\textbf{Warm total (median)} & \textbf{15.477} & 0.0964 & 0.1474 & 0.1671 & 0.0834 & \textbf{0.0813} & 0.0817 \\
+\textbf{Warm speedup} & 1.0$\times$ & 160.6$\times$ & 105.0$\times$ & 92.6$\times$ & 185.5$\times$ & \textbf{190.3$\times$} & 189.4$\times$ \\
 \midrule
-\textbf{First-Run End-to-End} & \textbf{35.829\,s} & \textbf{1.038\,s} & \textbf{0.941\,s} & \textbf{0.895\,s} & \textbf{0.964\,s} \\
-\textbf{First-Run Speedup} & 1.0$\times$ & 34.5$\times$ & 38.1$\times$ & \textbf{40.0$\times$} & 37.2$\times$ \\
+\textbf{First run (scored)} & \textbf{35.283} & 0.950 & 0.923 & 0.886 & 0.656 & \textbf{0.585} & 0.509 \\
+\textbf{First-run speedup} & 1.0$\times$ & 37.1$\times$ & 38.2$\times$ & 39.8$\times$ & 53.8$\times$ & \textbf{60.3$\times$} & 69.3$\times$ \\
+\midrule
+$\max|\Delta \log S|$ vs.\ reference & \multicolumn{7}{c}{$5.374\times 10^{-6}$ for every variant (bar: $10^{-5}$); all 21 runs \texttt{PASS}} \\
 \bottomrule
 \end{tabular}
-\caption{Apples-to-apples phase timing on \texttt{uifo\_800\_3000} (AMD EPYC 9334, 1 logical CPU, \texttt{results/amd-epyc/}).}
+\caption{One-session phase timing on \texttt{uifo\_800\_3000} (AMD EPYC 9334, 1 logical CPU, core 72). Medians of 3 runs per variant; warm values are the median over runs of each run's 10-repeat median. Source: \texttt{results/amd-epyc-final/comparison.txt}.}
 \label{tab:benchmarks}
 \end{table}
+
+\subsection{Reproduction}
+
+\begin{footnotesize}
+\begin{verbatim}
+pip install -r requirements.txt && pip install -e .    # builds dfsparse with E12 flags
+python benchmark.py --cpus 1 --output final.json --save-arrays final.npz
+DIFFEROMETOR_XLA_FLAGS=fast python benchmark.py --cpus 1 --output fast.json  # opt-in
+DIFFEROMETOR_XLA_FLAGS=0    python benchmark.py --cpus 1 --output default.json
+python tools/summarize_runs.py results/amd-epyc-final \
+    baseline,cpp,stage3,fastreadout,v2_head,final,final_fast \
+    --pairs v2_head:final,final:final_fast
+\end{verbatim}
+\end{footnotesize}
 
 % ==============================================================================
 \section{Causal Chain \& Glossary}
@@ -241,12 +265,12 @@ Warm Gradient (median) & 3.010\,s & 0.045\,s & 0.050\,s & 0.059\,s & \textbf{0.0
 \begin{center}
 \small
 \fbox{\parbox{0.96\linewidth}{\centering
-\textbf{1. Host \texttt{custom\_vjp} + 19 Wirtinger Kernels} (0.35--0.52\,s XLA) $\longrightarrow$
+\textbf{1. Host \texttt{custom\_vjp} + 19 Wirtinger Kernels + lean XLA flags} (19.2\,s $\to$ 0.17\,s XLA) $\longrightarrow$
 \textbf{2. Grouped Sparse COO} (2,537 vs.\ 564k) $\longrightarrow$
 \textbf{3. C++ Batched LU (\texttt{dfsparse})} (KLU pivot reuse) $\longrightarrow$
 \textbf{4. MISO Quadratic + Hoisted $N$} ($w^H N w$ at 272 nnz) $\longrightarrow$
 \textbf{5. Sparse VJP + Host Readout} ($\le 10^{-8}$ vs.\ dense) $\longrightarrow$
-\textbf{6. 0.097\,s Warm / 0.90--0.96\,s First-Run}
+\textbf{6. 0.081\,s Warm (190$\times$) / 0.585\,s First Run (60$\times$)}
 }}
 \end{center}
 
@@ -264,6 +288,8 @@ MISO Adjoint Identity & Rewriting $c^H A^{-1} N A^{-\dagger} c$ as $w^H N w$ ($w
 Sparse VJP ($-\lambda_r x_c$) & Computing reverse-mode matrix gradients only at nonzero coordinates, not densely. \\
 Wirtinger Kernels & Closed-form NumPy component kernels (\texttt{native\_kernels.py}) tracking holomorphic/anti-holomorphic duals. \\
 Host Readout & Running \texttt{signal\_detector} and \texttt{power\_detector} in NumPy behind \texttt{custom\_vjp}. \\
+Lean XLA flags (E11) & Telling XLA to generate its few remaining small kernels the cheap, classic way; same answers, less compile time. \\
+FMA contraction (E12) & Fusing $a\cdot b + c$ into one instruction with one rounding; we forbid it so the CPU-tuned solver rounds exactly like before. \\
 \bottomrule
 \end{tabular}
 \caption{Plain-language glossary of key concepts.}

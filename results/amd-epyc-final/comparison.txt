@@ -1,0 +1,46 @@
+cpu: AMD EPYC 9334 32-Core Processor (1 cpu), python 3.12.15, jax 0.9.0, runs per variant: 3, warm repeats per run: 10
+
+variant          first run s (min-max)  speedup  compile s      warm med s (min-max)  speedup  max|dlogS| ref  PASS  xla_flags
+baseline        35.283 (35.223-35.307)     1.0x     19.234   15.4766 (15.4507-15.4828)     1.0x       5.374e-06  yes   None
+cpp              0.950 (0.950-0.961)    37.1x      0.511    0.0964 (0.0959-0.0966)   160.6x       5.374e-06  yes   None
+stage3           0.923 (0.922-0.927)    38.2x      0.396    0.1474 (0.1469-0.1564)   105.0x       5.374e-06  yes   None
+fastreadout      0.886 (0.885-0.919)    39.8x      0.345    0.1671 (0.1612-0.1865)    92.6x       5.374e-06  yes   None
+v2_head          0.656 (0.649-0.664)    53.8x      0.238    0.0834 (0.0833-0.0840)   185.5x       5.374e-06  yes   None
+final            0.585 (0.583-0.595)    60.3x      0.171    0.0813 (0.0807-0.0819)   190.3x       5.374e-06  yes   --xla_cpu_use_fusion_emitters=false
+final_fast       0.509 (0.508-0.515)    69.3x      0.097    0.0817 (0.0806-0.0818)   189.4x       5.374e-06  yes   --xla_cpu_use_fusion_emitters=false --xla_backend_optimization_level=0
+
+first-run phase medians (seconds):
+phase                      baseline          cpp       stage3  fastreadout      v2_head        final   final_fast
+imports                      0.2644       0.2608       0.2664       0.2671       0.2607       0.2606       0.2598
+initialize                   0.0027       0.0033       0.0027       0.0027       0.0033       0.0033       0.0033
+load                         0.0015       0.0015       0.0015       0.0015       0.0015       0.0014       0.0015
+build                        0.7037       0.0622       0.0639       0.0641       0.0623       0.0631       0.0631
+forward_lower                1.1371       0.1334       0.0135       0.1084       0.0100       0.0100       0.0100
+forward_compile             12.6650       0.0106       0.0111       0.0107       0.0084       0.0085       0.0085
+forward                     12.1350       0.0589       0.1309       0.1362       0.0475       0.0472       0.0467
+sensitivity_lower            0.1049       0.0257       0.0258       0.0213       0.0224       0.0224       0.0225
+sensitivity_compile          0.4261       0.1778       0.1814       0.1261       0.1304       0.0884       0.0333
+sensitivity                  0.0008       0.0008       0.0008       0.0031       0.0024       0.0009       0.0009
+gradient_lower               0.2943       0.0142       0.0144       0.0125       0.0070       0.0069       0.0066
+gradient_compile             4.6153       0.1495       0.1501       0.0635       0.0598       0.0343       0.0163
+gradient                     2.9430       0.0522       0.0614       0.0689       0.0383       0.0365       0.0362
+host_transfer                0.0004       0.0002       0.0002       0.0002       0.0002       0.0002       0.0002
+
+warm phase medians (seconds, median over runs of each run's median):
+forward                     12.2925       0.0432       0.0977       0.1047       0.0462       0.0467       0.0467
+sensitivity                  0.2398       0.0002       0.0002       0.0008       0.0009       0.0009       0.0009
+gradient                     2.9369       0.0492       0.0498       0.0590       0.0359       0.0341       0.0340
+host_transfer                0.0002       0.0001       0.0001       0.0001       0.0001       0.0001       0.0001
+
+numeric agreement with 'baseline' (saved arrays, run 1):
+variant       max|dlogS|  grad rel.err    grad cosine
+cpp            6.717e-08     8.675e-08   1.0000000000
+stage3         6.749e-08     8.763e-08   1.0000000000
+fastreadout    6.749e-08     8.844e-08   1.0000000000
+v2_head        6.717e-08     8.606e-08   1.0000000000
+final          6.717e-08     8.613e-08   1.0000000000
+final_fast     6.717e-08     8.613e-08   1.0000000000
+
+v2_head vs final: max relative difference gradient 8.02e-10
+
+final vs final_fast: max relative difference sensitivity 2.16e-16

@@ -1,0 +1,71 @@
+Initialize CPU backend: 0.003157 s
+CPU: AMD EPYC 9334 32-Core Processor; affinity: 1; devices: [CpuDevice(id=0)]
+Read and parse public inputs: 0.001497 s
+Build optical setup and prepare inputs: 0.063835 s
+Workload: 101 frequencies; 193 physical design variables; no optimizer
+Forward: trace / lower: 0.133678 s
+Forward: compile: 0.010652 s
+Forward simulation + AD residuals: 0.058916 s
+Sensitivity: trace / lower: 0.025757 s
+Sensitivity: compile: 0.183045 s
+Sensitivity, powers and scalar loss: 0.000859 s
+Gradient: trace / lower: 0.014481 s
+Gradient: compile: 0.150949 s
+Reverse-mode gradient: 0.053543 s
+Transfer results to host: 0.000187 s
+Complete first-run total (excluding validation): 0.961386 s
+Forward: 0.053162 s
+Sensitivity: 0.000549 s
+Gradient: 0.049726 s
+Host transfer: 0.000120 s
+Repeat 01/10: 0.103557 s
+Forward: 0.054672 s
+Sensitivity: 0.000367 s
+Gradient: 0.049194 s
+Host transfer: 0.000120 s
+Repeat 02/10: 0.104354 s
+Forward: 0.039148 s
+Sensitivity: 0.000203 s
+Gradient: 0.049264 s
+Host transfer: 0.000130 s
+Repeat 03/10: 0.088745 s
+Forward: 0.039002 s
+Sensitivity: 0.000192 s
+Gradient: 0.048815 s
+Host transfer: 0.000118 s
+Repeat 04/10: 0.088128 s
+Forward: 0.038789 s
+Sensitivity: 0.000202 s
+Gradient: 0.049131 s
+Host transfer: 0.000118 s
+Repeat 05/10: 0.088240 s
+Forward: 0.039245 s
+Sensitivity: 0.000198 s
+Gradient: 0.048832 s
+Host transfer: 0.000124 s
+Repeat 06/10: 0.088398 s
+Forward: 0.039165 s
+Sensitivity: 0.000188 s
+Gradient: 0.058691 s
+Host transfer: 0.000162 s
+Repeat 07/10: 0.098206 s
+Forward: 0.049885 s
+Sensitivity: 0.000441 s
+Gradient: 0.050162 s
+Host transfer: 0.000128 s
+Repeat 08/10: 0.100616 s
+Forward: 0.047651 s
+Sensitivity: 0.000193 s
+Gradient: 0.049303 s
+Host transfer: 0.000117 s
+Repeat 09/10: 0.097263 s
+Forward: 0.046623 s
+Sensitivity: 0.000190 s
+Gradient: 0.048946 s
+Host transfer: 0.000117 s
+Repeat 10/10: 0.095877 s
+Validating outputs, reference sensitivity and finite-difference gradient...
+PASS: reference sensitivity and gradient spot check; full runtime median 0.096570 s
+JSON: /root/final_bench/cpp_2.json
+Plot: /root/final_bench/cpp_2.png
+EXIT 0

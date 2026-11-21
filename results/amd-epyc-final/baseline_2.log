@@ -1,0 +1,71 @@
+Initialize CPU backend: 0.002672 s
+CPU: AMD EPYC 9334 32-Core Processor; affinity: 1; devices: [CpuDevice(id=0)]
+Read and parse public inputs: 0.001462 s
+Build optical setup and prepare inputs: 0.703704 s
+Workload: 101 frequencies; 193 physical design variables; no optimizer
+Forward: trace / lower: 1.139900 s
+Forward: compile: 12.673044 s
+Forward simulation + AD residuals: 12.133491 s
+Sensitivity: trace / lower: 0.104895 s
+Sensitivity: compile: 0.427272 s
+Sensitivity, powers and scalar loss: 0.000837 s
+Gradient: trace / lower: 0.294303 s
+Gradient: compile: 4.619650 s
+Reverse-mode gradient: 2.940598 s
+Transfer results to host: 0.000340 s
+Complete first-run total (excluding validation): 35.306521 s
+Forward: 12.337156 s
+Sensitivity: 0.243857 s
+Gradient: 2.996897 s
+Host transfer: 0.000320 s
+Repeat 01/10: 15.578230 s
+Forward: 12.373387 s
+Sensitivity: 0.242723 s
+Gradient: 3.056388 s
+Host transfer: 0.000277 s
+Repeat 02/10: 15.672775 s
+Forward: 11.959122 s
+Sensitivity: 0.236716 s
+Gradient: 3.007428 s
+Host transfer: 0.000274 s
+Repeat 03/10: 15.203540 s
+Forward: 11.975836 s
+Sensitivity: 0.236906 s
+Gradient: 2.988159 s
+Host transfer: 0.000288 s
+Repeat 04/10: 15.201188 s
+Forward: 12.347070 s
+Sensitivity: 0.239577 s
+Gradient: 2.935818 s
+Host transfer: 0.000237 s
+Repeat 05/10: 15.522702 s
+Forward: 12.305993 s
+Sensitivity: 0.240022 s
+Gradient: 2.933163 s
+Host transfer: 0.000220 s
+Repeat 06/10: 15.479399 s
+Forward: 12.306040 s
+Sensitivity: 0.241105 s
+Gradient: 2.937407 s
+Host transfer: 0.000207 s
+Repeat 07/10: 15.484759 s
+Forward: 12.298987 s
+Sensitivity: 0.238198 s
+Gradient: 2.936444 s
+Host transfer: 0.000206 s
+Repeat 08/10: 15.473836 s
+Forward: 12.283983 s
+Sensitivity: 0.237115 s
+Gradient: 2.935608 s
+Host transfer: 0.000215 s
+Repeat 09/10: 15.456920 s
+Forward: 12.281991 s
+Sensitivity: 0.240527 s
+Gradient: 2.932763 s
+Host transfer: 0.000193 s
+Repeat 10/10: 15.455475 s
+Validating outputs, reference sensitivity and finite-difference gradient...
+PASS: reference sensitivity and gradient spot check; full runtime median 15.476617 s
+JSON: /root/final_bench/baseline_2.json
+Plot: /root/final_bench/baseline_2.png
+EXIT 0

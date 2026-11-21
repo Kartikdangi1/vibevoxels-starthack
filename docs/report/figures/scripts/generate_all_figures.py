@@ -117,95 +117,98 @@ def make_fig1():
 
 
 # ---------------------------------------------------------------------------
-# Figure 2: Benchmark Timing Comparison (AMD EPYC 9334 & Combined v1 vs v2)
+# Figure 2: Benchmark Timing Comparison -- one session, AMD EPYC 9334, 1 CPU
 # ---------------------------------------------------------------------------
+REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
+FINAL_DIR = os.path.join(REPO, "results", "amd-epyc-final")
+# (file prefix in results/amd-epyc-final, tick label); all measured in one session on one pinned core
+FIG2_VARIANTS = [
+    ("baseline", "Baseline\n(upstream)"),
+    ("cpp", "C++ LU\n(dfsparse)"),
+    ("stage3", "Native\nkernels"),
+    ("fastreadout", "Host\nreadout"),
+    ("v2_head", "combined-v2\n(committed)"),
+    ("final", "Final\n(+E11/E12)"),
+]
+FIG2_SETUP = ("imports", "initialize", "load", "build")
+
+
+def _session_medians(prefix, runs=3):
+    """Median over runs of every first-run phase and of each run's warm phase medians."""
+    import json
+    import statistics as st
+    rs = [json.load(open(os.path.join(FINAL_DIR, f"{prefix}_{i}.json"))) for i in range(1, runs + 1)]
+    phase = lambda r, cat=None, keys=None: sum(p["seconds"] for p in r["phases"]
+                                               if (cat is None or p["category"] == cat) and (keys is None or p["key"] in keys))
+    warm = lambda k: st.median(r["timing_seconds"]["phase_runtime_medians"][k] for r in rs)
+    return dict(
+        first=st.median(r["timing_seconds"]["end_to_end"] for r in rs),
+        setup=st.median(phase(r, keys=FIG2_SETUP) for r in rs),
+        compile=st.median(phase(r, cat="compile") for r in rs),
+        execute=st.median(phase(r, cat="execute") + phase(r, cat="output") for r in rs),
+        warm=st.median(r["timing_seconds"]["runtime_median"] for r in rs),
+        w_forward=warm("forward"), w_gradient=warm("gradient"), w_sens=warm("sensitivity"),
+    )
+
+
 def make_fig2():
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(14.8, 4.3), gridspec_kw={"width_ratios": [1.15, 1.15, 0.9]})
-
-    # Exact apples-to-apples numbers from results/amd-epyc/*.json (AMD EPYC 9334, 1 CPU)
-    configs = [
-        "Baseline\n(JAX Dense)",
-        "v1 Host\n(SuperLU)",
-        "+ Native\nKernels",
-        "+ Host\nReadout",
-        "+ C++ LU\n(dfsparse)",
-    ]
-
-    # Panel A: Median Warm Execution Time (s)
-    fwd = np.array([13.3599, 0.1145, 0.0967, 0.1106, 0.0427])
-    grad = np.array([3.0100, 0.0454, 0.0501, 0.0585, 0.0503])
-    sens = np.array([0.2501, 0.0002, 0.0002, 0.0008, 0.0002])
-    warm_medians = [16.9520, 0.1602, 0.1472, 0.1727, 0.0969]
-    warm_speedups = ["1.0x", "105.8x", "115.2x", "98.1x", "174.9x"]
-
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(14.8, 4.4), gridspec_kw={"width_ratios": [1.1, 1.1, 1.0]})
+    m = [_session_medians(k) for k, _ in FIG2_VARIANTS]
+    configs = [lbl for _, lbl in FIG2_VARIANTS]
     x = np.arange(len(configs))
-    w = 0.56
-    ax1.bar(x, fwd, width=w, color=C_BLUE, label="Forward Simulation")
-    ax1.bar(x, grad, bottom=fwd, width=w, color=C_ORANGE, label="Reverse-Mode Gradient")
-    ax1.bar(x, sens, bottom=fwd + grad, width=w, color=C_PURPLE, label="Sensitivity & Loss")
+    w = 0.58
+    gap = dict(edgecolor="white", linewidth=1.0)  # surface gap between stacked segments
 
-    ax1.set_xticks(x)
-    ax1.set_xticklabels(configs, fontsize=7.6)
-    ax1.set_ylabel("Median Warm Execution Time (s)")
-    ax1.set_ylim(0, 20.5)
-    ax1.set_title("(a) Warm Execution (EPYC 9334, 1 CPU)", pad=8, fontweight="bold")
-    ax1.legend(loc="upper right", frameon=True, facecolor="white", framealpha=0.9, fontsize=7.8)
+    def stack(ax, xs, parts, colors, labels):
+        bottom = np.zeros(len(xs))
+        for vals, col, lab in zip(parts, colors, labels):
+            ax.bar(xs, vals, bottom=bottom, width=w, color=col, label=lab, **gap)
+            bottom += vals
 
-    for idx, (tot, sp) in enumerate(zip(warm_medians, warm_speedups)):
-        lbl = f"{tot:.2f} s" if idx == 0 else f"{tot:.3f} s\n({sp})"
-        col = C_DARK if idx == 0 else (C_GREEN if idx == 4 else C_BLUE)
-        ax1.text(idx, tot + 0.4, lbl, ha="center", va="bottom", fontsize=7.5, fontweight="bold", color=col)
+    # (a) warm execution, all variants
+    stack(ax1, x, [np.array([v["w_forward"] for v in m]), np.array([v["w_gradient"] for v in m]),
+                   np.array([v["w_sens"] for v in m])],
+          [C_BLUE, C_ORANGE, C_PURPLE], ["Forward simulation", "Reverse-mode gradient", "Sensitivity & loss"])
+    for i, v in enumerate(m):
+        lbl = f"{v['warm']:.2f} s" if i == 0 else f"{v['warm']:.3f} s\n{m[0]['warm'] / v['warm']:.0f}x"
+        ax1.text(i, v["warm"] + m[0]["warm"] * 0.02, lbl, ha="center", va="bottom", fontsize=7.4, color=C_DARK,
+                 fontweight="bold" if i == len(m) - 1 else "normal")
+    ax1.set_xticks(x); ax1.set_xticklabels(configs, fontsize=7.4)
+    ax1.set_ylabel("Median warm evaluation (s)")
+    ax1.set_ylim(0, m[0]["warm"] * 1.22)
+    ax1.set_title("(a) Warm evaluation", pad=8, fontweight="bold")
+    ax1.legend(loc="upper right", frameon=True, facecolor="white", framealpha=0.9, fontsize=7.6)
 
-    # Panel B: First-Run End-to-End Breakdown (s)
-    setup = np.array([0.9968, 0.3314, 0.3380, 0.3371, 0.3284])
-    comp = np.array([19.3009, 0.5093, 0.4057, 0.3484, 0.5236])
-    exec1 = np.array([15.5316, 0.1970, 0.1976, 0.2094, 0.1121])
-    e2e_totals = [35.8293, 1.0377, 0.9413, 0.8949, 0.9640]
-    e2e_speedups = ["1.0x", "34.5x", "38.1x", "40.0x", "37.2x"]
+    # (b) first-run end-to-end, all variants (the scored number)
+    parts = [np.array([v[k] for v in m]) for k in ("setup", "compile", "execute")]
+    stack(ax2, x, parts, [C_GREY, C_SKY, C_GREEN], ["Imports & setup", "XLA trace / lower / compile", "Execute + transfer"])
+    for i, v in enumerate(m):
+        lbl = f"{v['first']:.1f} s" if i == 0 else f"{v['first']:.3f} s\n{m[0]['first'] / v['first']:.0f}x"
+        ax2.text(i, v["first"] + m[0]["first"] * 0.02, lbl, ha="center", va="bottom", fontsize=7.4, color=C_DARK,
+                 fontweight="bold" if i == len(m) - 1 else "normal")
+    ax2.set_xticks(x); ax2.set_xticklabels(configs, fontsize=7.4)
+    ax2.set_ylabel("First-run end-to-end (s)")
+    ax2.set_ylim(0, m[0]["first"] * 1.22)
+    ax2.set_title("(b) First run, complete (scored)", pad=8, fontweight="bold")
+    ax2.legend(loc="upper right", frameon=True, facecolor="white", framealpha=0.9, fontsize=7.6)
 
-    ax2.bar(x, setup, width=w, color=C_GREY, label="Imports & Setup")
-    ax2.bar(x, comp, bottom=setup, width=w, color=C_SKY, label="XLA Trace / Lower / Compile")
-    ax2.bar(x, exec1, bottom=setup + comp, width=w, color=C_GREEN, label="First-Run Execute")
-
-    ax2.set_xticks(x)
-    ax2.set_xticklabels(configs, fontsize=7.6)
-    ax2.set_ylabel("First-Run End-to-End Time (s)")
-    ax2.set_ylim(0, 43.0)
-    ax2.set_title("(b) First-Run E2E (EPYC 9334, 1 CPU)", pad=8, fontweight="bold")
-    ax2.legend(loc="upper right", frameon=True, facecolor="white", framealpha=0.9, fontsize=7.8)
-
-    for idx, (tot, sp) in enumerate(zip(e2e_totals, e2e_speedups)):
-        lbl = f"{tot:.2f} s\n(54% compile)" if idx == 0 else f"{tot:.3f} s\n({sp})"
-        col = C_DARK if idx == 0 else C_BLUE
-        ax2.text(idx, tot + 0.7, lbl, ha="center", va="bottom", fontsize=7.5, fontweight="bold", color=col)
-
-    # Panel C: Combined v1 vs Combined v2 on i7-1355U (1 CPU, Docker/WSL2)
-    # results/combined-final.json (v1): setup=1.852, compile=1.516, exec1=0.605, total=3.973
-    # benchmark-v2.json (v2): setup=1.923, compile=0.865, exec1=0.391, total=3.180
-    v_labels = ["Combined v1\n(final/combined)", "Combined v2\n(final/combined-v2)"]
-    v_setup = np.array([1.852, 1.923])
-    v_comp = np.array([1.516, 0.865])
-    v_exec = np.array([0.605, 0.391])
-    v_tot = [3.973, 3.180]
-
-    xv = np.arange(len(v_labels))
-    wv = 0.48
-    ax3.bar(xv, v_setup, width=wv, color=C_GREY, label="Imports & Setup")
-    ax3.bar(xv, v_comp, bottom=v_setup, width=wv, color=C_SKY, label="XLA Compile")
-    ax3.bar(xv, v_exec, bottom=v_setup + v_comp, width=wv, color=C_GREEN, label="First-Run Execute")
-
-    ax3.set_xticks(xv)
-    ax3.set_xticklabels(v_labels, fontsize=8.0)
-    ax3.set_ylabel("First-Run End-to-End Time (s)")
-    ax3.set_ylim(0, 5.2)
-    ax3.set_title("(c) Combined v1 vs v2 (i7-1355U)", pad=8, fontweight="bold")
-    ax3.legend(loc="upper right", frameon=True, facecolor="white", framealpha=0.9, fontsize=7.8)
-
-    ax3.text(0, v_tot[0] + 0.12, f"{v_tot[0]:.2f} s\n(1.52 s compile)", ha="center", va="bottom", fontsize=7.8, fontweight="bold", color=C_DARK)
-    ax3.text(1, v_tot[1] + 0.12, f"{v_tot[1]:.2f} s (-20%)\n(0.87 s compile, -43%)", ha="center", va="bottom", fontsize=7.8, fontweight="bold", color=C_GREEN)
+    # (c) zoom: first-run breakdown of the optimised variants only
+    xz = np.arange(len(m) - 1)
+    stack(ax3, xz, [p[1:] for p in parts], [C_GREY, C_SKY, C_GREEN],
+          ["Imports & setup", "XLA trace / lower / compile", "Execute + transfer"])
+    top = max(v["first"] for v in m[1:])
+    for j, v in enumerate(m[1:]):
+        ax3.text(j, v["first"] + top * 0.02, f"{v['first']:.3f} s\ncompile\n{v['compile']:.3f} s", ha="center",
+                 va="bottom", fontsize=7.2, color=C_DARK, fontweight="bold" if j == len(m) - 2 else "normal")
+    ax3.set_xticks(xz); ax3.set_xticklabels(configs[1:], fontsize=7.4)
+    ax3.set_ylabel("First-run end-to-end (s)")
+    ax3.set_ylim(0, top * 1.3)
+    ax3.set_title("(c) Zoom: optimised variants", pad=8, fontweight="bold")
+    ax3.legend(loc="upper right", frameon=True, facecolor="white", framealpha=0.9, fontsize=7.4)
 
     fig.tight_layout(w_pad=2.0)
     save_fig(fig, "fig2_benchmark_comparison")
+
 
 
 # ---------------------------------------------------------------------------
@@ -325,8 +328,8 @@ def make_fig4():
         )
 
     # Row labels (AMD EPYC 9334 1-CPU apples-to-apples)
-    ax.text(1.0, 42.8, "BEFORE: Baseline Dense Pipeline (16.95 s warm | 35.83 s first-run on EPYC 9334, 1 CPU | 606 dense LU solves)", fontsize=9.1, fontweight="bold", color=C_VERM)
-    ax.text(1.0, 20.8, "AFTER (combined-v2): Host + Native Kernels + Host Readout + C++ Batched LU (0.097 s warm [175x] | 0.90-0.96 s first-run [37-40x])", fontsize=9.1, fontweight="bold", color=C_GREEN)
+    ax.text(1.0, 42.8, "BEFORE: Baseline Dense Pipeline (15.48 s warm | 35.28 s first-run on EPYC 9334, 1 CPU | 606 dense LU solves)", fontsize=9.1, fontweight="bold", color=C_VERM)
+    ax.text(1.0, 20.8, "AFTER (final): Host + Native Kernels + Host Readout + C++ LU + lean XLA (0.081 s warm [190x] | 0.585 s first-run [60x])", fontsize=9.1, fontweight="bold", color=C_GREEN)
 
     # BEFORE row (y = 29..39)
     draw_box(1.5, 29, 17, 10, "19-way\nlax.switch\n(all functions)", "#FEE2E2", C_VERM)

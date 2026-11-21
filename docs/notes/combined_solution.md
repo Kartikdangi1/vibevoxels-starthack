@@ -13,6 +13,8 @@
 | `feyer-stage3-native-kernels` | 19 closed-form NumPy Wirtinger-dual component kernels eliminating startup `make_jaxpr` + self-check | **default built-in component evaluator** (`differometor/native_kernels.py`) |
 | `bhuvan/fast-readout` | host `signal_detector` and `power_detector` behind `jax.custom_vjp` | **default readout detectors** (`differometor/components.py`) |
 | `bhuvanedits` | `tools/` correctness/compare/leaderboard scripts | merged unchanged |
+| E11 (`differometor/__init__.py`) | XLA:CPU classic emitters for the small readout/gradient programs | **default** (`DIFFEROMETOR_XLA_FLAGS=exact`, bit-identical); `fast` opt-in ([notes](xla_and_native_flags.md)) |
+| E12 (`differometor/native/build.py`) | solver compiled with `-march=native -ffp-contract=off` | **default** at install, bit-identical ([notes](xla_and_native_flags.md)) |
 
 From the non-core branches we also keep: profiling scripts and approach notes (`perf`), the Schur patch that did not pay off (`docs/notes/step3-schur-complement.patch`), the 10-year and 15-year Eidothea literature notes (`docs/notes/eidothea_literature_verdicts.md`, `docs/notes/eidothea_literature_verdicts_15y.md`), and the explainer report (`docs/report/main.tex`, `docs/report/main.pdf`).
 
@@ -35,6 +37,7 @@ From the non-core branches we also keep: profiling scripts and approach notes (`
   - `+ Host readout` (`fastreadout_cpu1`): **0.895 s** first run (40.0×), **0.1727 s** warm median (98.1×).
   - `+ C++ LU` (`cpp_cpu1`): **0.964 s** first run (37.2×), **0.0969 s** warm median (**174.9×**).
   - All achieve `max |dlog S| = 5.374e-6` (identical to baseline) and gradient cosine similarity `1.0000000000` vs baseline.
+- **Final one-session benchmark** (`results/amd-epyc-final/comparison.txt`, AMD EPYC 9334, 1 CPU, 3 runs × 10 warm repeats per variant, all 21 runs PASS): baseline **35.283 s** → committed v2 **0.656 s** → final (+E11/E12) **0.585 s** first run (**60.3×**; `fast` 0.509 s, 69.3×); warm **15.477 s → 0.0813 s** (190×); compile **19.234 s → 0.171 s**. Details: [xla_and_native_flags.md](xla_and_native_flags.md#benchmark-before--after).
 - `benchmark-v2.json` (i7-1355U WSL2, 1 CPU): **3.180 s** first run, **0.865 s** compile, `max |dlog S| = 5.374e-6`, PASS.
 
 Known limits are those in `OPTIMIZATION_LOG.md` (no forward-mode AD on the host path; gradients only w.r.t. `optimized_parameters`). `DIFFEROMETOR_BACKEND=jax` restores full JAX autodiff.
