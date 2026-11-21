@@ -104,8 +104,8 @@ CPU-only benchmark, but documented in case it's useful: [docs/RESOURCES.md](docs
 ## Status
 
 - [x] Get a working Docker environment running `start_here.py` (also works bare-metal in WSL2/Linux) — verified
-- [ ] Run unmodified baseline benchmark, save `benchmark-baseline.json/.png`
-- [ ] Profile to find the bottleneck
-- [ ] Optimize `differometor/`, keep correctness checks passing
-- [ ] Re-run benchmark, compare before/after
-- [ ] Write the short approach note
+- [x] Run unmodified baseline benchmark: [benchmarks/results/before-original.json](benchmarks/results/before-original.json) (55.14 s)
+- [x] Profile to find the bottleneck ([tools/profile_parts.py](tools/profile_parts.py), [tools/profile_compile.py](tools/profile_compile.py))
+- [x] Optimize `differometor/`, keep correctness checks passing
+- [x] Re-run benchmark, compare before/after: [benchmarks/results/after-shared-lu-grouped-fill.json](benchmarks/results/after-shared-lu-grouped-fill.json) (31.15 s, −44%)
+- [x] Write the short approach note: [docs/notes/approach.md](docs/notes/approach.md)
