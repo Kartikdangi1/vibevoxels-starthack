@@ -36,6 +36,7 @@ from jax.extend import core as jcore
 
 from differometor.components import FUNCTIONS, UNIT_VACUUM, H_PLANCK, F0
 from differometor.build import LINKING_FUNCTIONS
+from differometor.native import native_function
 
 NOISE_SCALE = 2 * UNIT_VACUUM * H_PLANCK * F0 * 0.25
 
@@ -655,7 +656,7 @@ class Plan:
             for key in groups:
                 fid = int(key[1:])
                 if fid not in self.traced:
-                    t = trace_function(FUNCTIONS[fid], (7,), jnp.complex128)
+                    t = native_function(FUNCTIONS[fid]) or trace_function(FUNCTIONS[fid], (7,), jnp.complex128)
                     self.traced[fid] = t
                     self.unsupported |= t.unsupported
         self.links = {}
