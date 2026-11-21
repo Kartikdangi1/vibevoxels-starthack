@@ -17,6 +17,7 @@ Conventions used throughout:
 - All indices are integer arrays that index into parameter vectors and matrix entries.
 """
 
+import os
 import jax
 from time import time
 import jax.numpy as jnp
@@ -659,7 +660,7 @@ def _assemble(parameters, base_values, groups):
     return values.astype(jnp.complex128)
 
 
-def simulate(
+def simulate_sparse_jax(
     # prepared arrays
     optimized_parameters, optimized_parameter_indices, optimized_value_indices,
     carrier_changing_parameter_indices, carrier_changing_values,
@@ -721,6 +722,44 @@ def simulate(
     noise = jnp.sqrt(2 * quadratic.T * UNIT_VACUUM * H_PLANCK * F0 * 0.25)
     return carrier.T, signal.T, noise.squeeze()
 
+
+
+def simulate(
+    # prepared arrays
+    optimized_parameters, optimized_parameter_indices, optimized_value_indices,
+    carrier_changing_parameter_indices, carrier_changing_values,
+    signal_changing_parameter_indices, signal_changing_values,
+    parameters, noise_selection_vectors, qhd_parameter_indices, qhd_placing_indices,
+    linked_indices, linking_function_indices, indices_to_link, signal_carrier_indices,
+    # compressed carrier system
+    carrier_values, carrier_rows, carrier_cols, carrier_rhs_rows, carrier_size_marker, carrier_groups,
+    # compressed signal system
+    signal_values, signal_rows, signal_cols, signal_rhs_rows, signal_place_k, signal_conj_mask, signal_groups,
+    # compressed noise source matrix
+    noise_values, noise_rows, noise_cols, noise_groups,
+):
+    """
+    Run one full simulation pass (carrier, signal, quantum noise) on compressed arrays.
+
+    By default the whole pass executes on the host (NumPy/SciPy SuperLU) inside a
+    single custom VJP (see `differometor.host`), which removes nearly all XLA
+    compilation. If a component/linking function uses a primitive the host
+    interpreter does not support, or DIFFEROMETOR_BACKEND=jax is set, the
+    in-graph implementation `simulate_sparse_jax` is used instead.
+
+    Note: the host path differentiates with respect to `optimized_parameters`
+    only (the other inputs are treated as constants), which is what optimisation
+    and the benchmark require. Use DIFFEROMETOR_BACKEND=jax for gradients with
+    respect to other inputs.
+    """
+    arrays = dict(locals())
+    if os.environ.get("DIFFEROMETOR_BACKEND", "host") != "jax":
+        from differometor.host import make_host_simulate
+        host_simulate, _ = make_host_simulate(arrays)
+        if host_simulate is not None:
+            rest = {key: value for key, value in arrays.items() if key != "optimized_parameters"}
+            return host_simulate(optimized_parameters, rest)
+    return simulate_sparse_jax(**arrays)
 
 
 def run_build_step(
