@@ -1,0 +1,347 @@
+{
+  "2003.13202": {
+    "arxiv_id": "2003.13202",
+    "title": "Optimization of quantum noise by completing the square of multiple interferometer outputs in quantum locking for gravitational wave detectors",
+    "authors": [
+      "Rika Yamada",
+      "Yutaro Enomoto",
+      "Atsushi Nishizawa",
+      "Koji Nagano",
+      "Sachiko Kuroyanagi",
+      "Keiko Kokeyama",
+      "Kentaro Komori",
+      "Yuta Michimura",
+      "Takeo Naito",
+      "Izumi Watanabe",
+      "Taigen Morimoto",
+      "Masaki Ando",
+      "Akira Furusawa",
+      "Seiji Kawamura"
+    ],
+    "year": "2020",
+    "bibkey": "yamada2020optimization"
+  },
+  "2404.17039": {
+    "arxiv_id": "2404.17039",
+    "title": "Differentiating Through Linear Solvers",
+    "authors": [
+      "Paul Hovland",
+      "Jan H\u00fcckelheim"
+    ],
+    "year": "2024",
+    "bibkey": "hovland2024differentiating"
+  },
+  "2507.11341": {
+    "arxiv_id": "2507.11341",
+    "title": "TMMax: High-performance modeling of multilayer thin-film structures using transfer matrix method with JAX",
+    "authors": [
+      "Bahrem Serhat Danis",
+      "Esra Zayim"
+    ],
+    "year": "2025",
+    "bibkey": "danis2025tmmax"
+  },
+  "2205.07887": {
+    "arxiv_id": "2205.07887",
+    "title": "Fast multi-source nanophotonic simulations using augmented partial factorization",
+    "authors": [
+      "Ho-Chun Lin",
+      "Zeyu Wang",
+      "Chia Wei Hsu"
+    ],
+    "year": "2022",
+    "bibkey": "lin2022fast"
+  },
+  "2212.00964": {
+    "arxiv_id": "2212.00964",
+    "title": "JAX-FEM: A differentiable GPU-accelerated 3D finite element solver for automatic inverse design and mechanistic data science",
+    "authors": [
+      "Tianju Xue",
+      "Shuheng Liao",
+      "Zhengtao Gan",
+      "Chanwook Park",
+      "Xiaoyu Xie",
+      "Wing Kam Liu",
+      "Jian Cao"
+    ],
+    "year": "2022",
+    "bibkey": "xue2022jax"
+  },
+  "2105.15183": {
+    "arxiv_id": "2105.15183",
+    "title": "Efficient and Modular Implicit Differentiation",
+    "authors": [
+      "Mathieu Blondel",
+      "Quentin Berthet",
+      "Marco Cuturi",
+      "Roy Frostig",
+      "Stephan Hoyer",
+      "Felipe Llinares-L\u00f3pez",
+      "Fabian Pedregosa",
+      "Jean-Philippe Vert"
+    ],
+    "year": "2021",
+    "bibkey": "blondel2021efficient"
+  },
+  "1702.01044": {
+    "arxiv_id": "1702.01044",
+    "title": "Beating the standard sensitivity-bandwidth limit of cavity-enhanced interferometers with internal squeezed-light generation",
+    "authors": [
+      "Mikhail Korobko",
+      "Lisa Kleybolte",
+      "Stefan Ast",
+      "Haixing Miao",
+      "Yanbei Chen",
+      "Roman Schnabel"
+    ],
+    "year": "2017",
+    "bibkey": "korobko2017beating"
+  },
+  "2509.24740": {
+    "arxiv_id": "2509.24740",
+    "title": "SymBoltz.jl: A symbolic-numeric, approximation-free, and differentiable linear Einstein-Boltzmann solver",
+    "authors": [
+      "Herman Sletmoen"
+    ],
+    "year": "2025",
+    "bibkey": "sletmoen2025symboltz"
+  },
+  "2105.09469": {
+    "arxiv_id": "2105.09469",
+    "title": "Decomposing reverse-mode automatic differentiation",
+    "authors": [
+      "Roy Frostig",
+      "Matthew J. Johnson",
+      "Dougal Maclaurin",
+      "Adam Paszke",
+      "Alexey Radul"
+    ],
+    "year": "2021",
+    "bibkey": "frostig2021decomposing"
+  },
+  "2406.05027": {
+    "arxiv_id": "2406.05027",
+    "title": "Optimizing Automatic Differentiation with Deep Reinforcement Learning",
+    "authors": [
+      "Jamie Lohoff",
+      "Emre Neftci"
+    ],
+    "year": "2024",
+    "bibkey": "lohoff2024optimizing"
+  },
+  "2406.08704": {
+    "arxiv_id": "2406.08704",
+    "title": "Differentiable Optics with dLux II: Optical Design Maximising Fisher Information",
+    "authors": [
+      "Louis Desdoigts",
+      "Benjamin Pope",
+      "Michael Gully-Santiago",
+      "Peter Tuthill"
+    ],
+    "year": "2024",
+    "bibkey": "desdoigts2024differentiable"
+  },
+  "2403.08847": {
+    "arxiv_id": "2403.08847",
+    "title": "JAXbind: Bind any function to JAX",
+    "authors": [
+      "Jakob Roth",
+      "Martin Reinecke",
+      "Gordian Edenhofer"
+    ],
+    "year": "2024",
+    "bibkey": "roth2024jaxbind"
+  },
+  "2511.19364": {
+    "arxiv_id": "2511.19364",
+    "title": "Neural surrogates for designing gravitational wave detectors",
+    "authors": [
+      "Carlos Ruiz-Gonzalez",
+      "S\u00f6ren Arlt",
+      "Sebastian Lehner",
+      "Arturs Berzins",
+      "Yehonathan Drori",
+      "Rana X Adhikari",
+      "Johannes Brandstetter",
+      "Mario Krenn"
+    ],
+    "year": "2025",
+    "bibkey": "ruizgonzalez2025neural"
+  },
+  "2312.04258": {
+    "arxiv_id": "2312.04258",
+    "title": "Digital Discovery of interferometric Gravitational Wave Detectors",
+    "authors": [
+      "Mario Krenn",
+      "Yehonathan Drori",
+      "Rana X Adhikari"
+    ],
+    "year": "2023",
+    "bibkey": "krenn2023digital"
+  },
+  "2411.07379": {
+    "arxiv_id": "2411.07379",
+    "title": "Detection of 15 dB Squeezed States of Light and their Application for the Absolute Calibration of Photoelectric Quantum Efficiency",
+    "authors": [
+      "Henning Vahlbruch",
+      "Moritz Mehmet",
+      "Karsten Danzmann",
+      "Roman Schnabel"
+    ],
+    "year": "2024",
+    "bibkey": "vahlbruch2024detection"
+  },
+  "2201.10668": {
+    "arxiv_id": "2201.10668",
+    "title": "Science-Driven Tunable Design of Cosmic Explorer Detectors",
+    "authors": [
+      "Varun Srivastava",
+      "Derek Davis",
+      "Kevin Kuns",
+      "Philippe Landry",
+      "Stefan Ballmer",
+      "Matt Evans",
+      "Evan Hall",
+      "Jocelyn Read",
+      "B. S. Sathyaprakash"
+    ],
+    "year": "2022",
+    "bibkey": "srivastava2022science"
+  },
+  "1904.09043": {
+    "arxiv_id": "1904.09043",
+    "title": "Differentiating Through a Cone Program",
+    "authors": [
+      "Akshay Agrawal",
+      "Shane Barratt",
+      "Stephen Boyd",
+      "Enzo Busseti",
+      "Walaa M. Moursi"
+    ],
+    "year": "2019",
+    "bibkey": "agrawal2019differentiating"
+  },
+  "1912.04232": {
+    "arxiv_id": "1912.04232",
+    "title": "JAX, M.D.: A Framework for Differentiable Physics",
+    "authors": [
+      "Samuel S. Schoenholz",
+      "Ekin D. Cubuk"
+    ],
+    "year": "2019",
+    "bibkey": "schoenholz2019jax"
+  },
+  "2004.06270": {
+    "arxiv_id": "2004.06270",
+    "title": "Pykat: Python package for modelling precision optical interferometers",
+    "authors": [
+      "Daniel D. Brown",
+      "Philip Jones",
+      "Samuel Rowlinson",
+      "Andreas Freise",
+      "Sean Leavey",
+      "Anna C. Green",
+      "Daniel Toyra"
+    ],
+    "year": "2020",
+    "bibkey": "brown2020pykat"
+  },
+  "2101.02270": {
+    "arxiv_id": "2101.02270",
+    "title": "Fast Parallel Newton-Raphson Power Flow Solver for Large Number of System Calculations with CPU and GPU",
+    "authors": [
+      "Zhenqi Wang",
+      "Sebastian Wende-von Berg",
+      "Martin Braun"
+    ],
+    "year": "2021",
+    "bibkey": "wang2021fast"
+  },
+  "1601.05725": {
+    "arxiv_id": "1601.05725",
+    "title": "Basker: A Threaded Sparse LU Factorization Utilizing Hierarchical Parallelism and Data Layouts",
+    "authors": [
+      "Joshua Dennis Booth",
+      "Sivasankaran Rajamanickam",
+      "Heidi K. Thornquist"
+    ],
+    "year": "2016",
+    "bibkey": "booth2016basker"
+  },
+  "2505.07308": {
+    "arxiv_id": "2505.07308",
+    "title": "Revisiting Sparse Matrix Coloring and Bicoloring",
+    "authors": [
+      "Alexis Montoison",
+      "Guillaume Dalle",
+      "Assefaw Gebremedhin"
+    ],
+    "year": "2025",
+    "bibkey": "montoison2025revisiting"
+  },
+  "2306.09257": {
+    "arxiv_id": "2306.09257",
+    "title": "Fast multi-channel inverse design through augmented partial factorization",
+    "authors": [
+      "Shiyu Li",
+      "Ho-Chun Lin",
+      "Chia Wei Hsu"
+    ],
+    "year": "2023",
+    "bibkey": "li2023fast"
+  },
+  "2602.05255": {
+    "arxiv_id": "2602.05255",
+    "title": "lrux: Fast low-rank updates of determinants and Pfaffians in JAX",
+    "authors": [
+      "Ao Chen",
+      "Christopher Roth"
+    ],
+    "year": "2026",
+    "bibkey": "chen2026lrux"
+  },
+  "2307.16830": {
+    "arxiv_id": "2307.16830",
+    "title": "Accelerating Optimal Power Flow with GPUs: SIMD Abstraction of Nonlinear Programs and Condensed-Space Interior-Point Methods",
+    "authors": [
+      "Sungho Shin",
+      "Fran\u00e7ois Pacaud",
+      "Mihai Anitescu"
+    ],
+    "year": "2023",
+    "bibkey": "shin2023accelerating"
+  },
+  "2606.09001": {
+    "arxiv_id": "2606.09001",
+    "title": "JAX-AMG: A GPU-Accelerated Differentiable Sparse Linear Solver Library for JAX",
+    "authors": [
+      "Yi Liu",
+      "Xiantao Fan",
+      "Jian-Xun Wang"
+    ],
+    "year": "2026",
+    "bibkey": "liu2026jax"
+  },
+  "2610.12336": {
+    "arxiv_id": "2610.12336",
+    "title": "asdex: Automatic Sparse Differentiation in JAX",
+    "authors": [
+      "Adrian Hill",
+      "Guillaume Dalle"
+    ],
+    "year": "2026",
+    "bibkey": "hill2026asdex"
+  },
+  "2610.41324": {
+    "arxiv_id": "2610.41324",
+    "title": "RapidDOC: Riccati-Preconditioned Implicit Differentiation for Differentiable Optimal Control under Operator Mismatch",
+    "authors": [
+      "Xiangda Zhu",
+      "Yuankun Chen",
+      "Zifei Nie",
+      "Yi Chang"
+    ],
+    "year": "2026",
+    "bibkey": "zhu2026rapiddoc"
+  }
+}
