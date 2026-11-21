@@ -706,7 +706,10 @@ def _assemble(plan, parameters, base, groups):
         fid = int(key[1:])
         # 'c' groups read no swept parameter: all rows agree, evaluate row 0 once.
         evaluated_rows = 1 if key[0] == "c" else rows_count
-        inputs = parameters[:evaluated_rows, g["inputs"]].reshape(-1, 7)  # (R*K, 7)
+        gathered = parameters[:evaluated_rows, g["inputs"]]  # (R, K, width)
+        if gathered.shape[-1] < 7:  # narrow groups (e.g. carrier-side `space` reads 3): functions only read their own width
+            gathered = np.pad(gathered, ((0, 0), (0, 0), (0, 7 - gathered.shape[-1])))
+        inputs = gathered.reshape(-1, 7)  # (R*K, 7)
         traced = plan.traced[fid]
         out = traced(inputs).reshape(evaluated_rows, g["inputs"].shape[0], -1)
         values[:, g["k"]] = out[:, g["rows"], g["slots"]]
@@ -726,7 +729,7 @@ def _assemble_backward(plan, ct_values, groups, saved, parameters_shape):
             ct_group = ct_group.sum(axis=0, keepdims=True)
         np.add.at(ct_out, (slice(None), g["rows"], g["slots"]), ct_group)
         ct_in = plan.traced[fid].vjp(inputs, ct_out.reshape(inputs.shape[0], -1))
-        ct_in = np.asarray(ct_in).reshape(out_shape[0], g["inputs"].shape[0], 7)
+        ct_in = np.asarray(ct_in).reshape(out_shape[0], g["inputs"].shape[0], 7)[..., : g["inputs"].shape[1]]
         rows = np.arange(out_shape[0])[:, None, None]
         np.add.at(ct_parameters, (np.broadcast_to(rows, ct_in.shape), np.broadcast_to(g["inputs"][None], ct_in.shape)), ct_in)
     return ct_parameters
