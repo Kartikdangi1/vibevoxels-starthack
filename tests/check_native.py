@@ -5,9 +5,18 @@ negative frequencies, and zero cotangents. Also a real-direction finite-differen
 """
 import os
 os.environ.setdefault("JAX_PLATFORMS", "cpu"); os.environ.setdefault("JAX_ENABLE_X64", "true")
+import hashlib, sys
 import jax, jax.numpy as jnp, numpy as np
+import differometor.components as _components
 from differometor.components import FUNCTIONS
 from differometor.native import native_function
+
+# native.py re-expresses components.py by hand: any edit there must be mirrored and this hash updated.
+COMPONENTS_SHA256 = "db7bca7b5a407070bc56278c9fd2ee54e1296b27809a9821dad04a29518ae2f2"
+failures = 0
+with open(_components.__file__, "rb") as f:
+    if hashlib.sha256(f.read()).hexdigest() != COMPONENTS_SHA256:
+        print("FAIL components.py changed since native.py was written; re-check every kernel"); failures += 1
 
 rng = np.random.default_rng(0)
 B = 64
@@ -70,13 +79,16 @@ for fn in FUNCTIONS:
             # d/d(frequency) of space_modulation is (k f cos(k f) - sin(k f)) / f^2 with k f ~ 1e-8 for
             # f ~ 1 Hz: catastrophic cancellation in any evaluation order (JAX's included). Frequency is
             # a swept, never-optimised input; its derivative is checked separately at a looser bound.
+            # Both evaluations err by ~1e-5 there against a cancellation-free series reference.
+            efreq = 0.0
             if fn.__name__.startswith("space_modulation"):
-                eg = max(rel(g[:, 1:], gref[:, 1:]), rel(g[:, :1], gref[:, :1]) * 1e-4)
+                eg, efreq = rel(g[:, 1:], gref[:, 1:]), rel(g[:, :1], gref[:, :1])
             else:
                 eg = rel(g, gref)
             worst = max(worst, ey, eg)
-            if ey > 1e-12 or eg > 1e-10:
-                print(f"FAIL {fn.__name__:40s} {kind:10s} zero_ct={zero_ct} fwd {ey:.1e} vjp {eg:.1e}")
+            if ey > 1e-12 or eg > 1e-10 or efreq > 1e-4:
+                print(f"FAIL {fn.__name__:40s} {kind:10s} zero_ct={zero_ct} fwd {ey:.1e} vjp {eg:.1e} freq-col {efreq:.1e}")
+                failures += 1
         # real-direction central finite difference of Re<ct, y> (independent of JAX)
         if kind == "physical":
             ct = rng.normal(size=y.shape) + 1j * rng.normal(size=y.shape)
@@ -89,6 +101,8 @@ for fn in FUNCTIONS:
                 floor = 1e-15 * np.abs(np.sum(np.abs(ct * nf(x)), 1)) / h
                 efd = (np.abs(fd - np.real(g[:, i])) / (np.abs(fd) + np.abs(np.real(g[:, i])) + 1e3 * floor + 1e-300)).max()
                 if efd > 1e-3:  # FD truncation on phases up to ~800 rad reaches ~1e-4
-                    print(f"FD FAIL {fn.__name__} input {i}: {efd:.1e}")
+                    print(f"FD FAIL {fn.__name__} input {i}: {efd:.1e}"); failures += 1
     print(f"{fn.__name__:40s} ok")
-print("WORST rel (fwd/vjp vs JAX):", worst)
+print("WORST rel (fwd/vjp vs JAX, excl. space_modulation frequency column):", worst)
+print("FAILURES:", failures)
+sys.exit(1 if failures else 0)
