@@ -1,0 +1,31 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Vocabulary First \& The Central Analogy}{1}{section.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Ten-year Eidothea literature scan (2016--2026, 1,067 unique papers). (a)~Annual publication growth with key milestones from Basker sparse LU (2016) to RapidDOC and JAX-AMG (2026). (b)~Paper counts across the 13 taxonomy subfields colored by cluster. Best viewed in color.}}{2}{figure.1}\protected@file@percent }
+\newlabel{fig:literature}{{1}{2}{Ten-year Eidothea literature scan (2016--2026, 1,067 unique papers). (a)~Annual publication growth with key milestones from Basker sparse LU (2016) to RapidDOC and JAX-AMG (2026). (b)~Paper counts across the 13 taxonomy subfields colored by cluster. Best viewed in color}{figure.1}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {2}The Problem \& The 10-Year Literature Scan (2016--2026)}{2}{section.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Summary of the five implemented Eidothea verdicts and their primary literature backing.}}{3}{table.1}\protected@file@percent }
+\newlabel{tab:verdicts}{{1}{3}{Summary of the five implemented Eidothea verdicts and their primary literature backing}{table.1}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {3}Step-by-Step From-Scratch Derivations}{3}{section.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Verdict 1: Eliminating the Redundant Quantum-Noise Solve}{3}{subsection.3.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Verdict 2: One Sparse LU Factorization Per Frequency, Reused Four Ways}{3}{subsection.3.2}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Sparsity structure and algorithmic work reduction on \texttt  {uifo\_800\_3000}. (a)~All three system matrices are $>99\%$ zeros. (b)~Combining Verdicts 1--4 cuts $751\times 751$ LU factorizations by $6.0\times $, VJP matrix multiplies by $209\times $, and quantum-noise matvec operations by $742\times $. Best viewed in color.}}{4}{figure.2}\protected@file@percent }
+\newlabel{fig:sparsity}{{2}{4}{Sparsity structure and algorithmic work reduction on \texttt {uifo\_800\_3000}. (a)~All three system matrices are $>99\%$ zeros. (b)~Combining Verdicts 1--4 cuts $751\times 751$ LU factorizations by $6.0\times $, VJP matrix multiplies by $209\times $, and quantum-noise matvec operations by $742\times $. Best viewed in color}{figure.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Verdict 3: Sparse COO/CSC Assembly \& Exact Complex Sparse VJP}{4}{subsection.3.3}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces End-to-end simulation and adjoint architecture before (top) and after (bottom) combining Verdicts 1--5. Best viewed in color.}}{5}{figure.3}\protected@file@percent }
+\newlabel{fig:pipeline}{{3}{5}{End-to-end simulation and adjoint architecture before (top) and after (bottom) combining Verdicts 1--5. Best viewed in color}{figure.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.4}Verdict 4: Hoisting Frequency-Independent Noise \& Sparse Contraction}{5}{subsection.3.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.5}Verdict 5: Slimming \texttt  {lax.switch} Dispatch}{5}{subsection.3.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4}Combined Architecture, Verification \& Benchmarks}{5}{section.4}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Benchmark comparison on \texttt  {uifo\_800\_3000} (1 logical CPU). (a)~Median warm execution drops from 17.68\,s to 0.721\,s ($24.5\times $ speedup). (b)~First-run end-to-end drops from 44.20\,s to 24.41\,s, leaving XLA compilation (19.60\,s, 80\%) as the dominant remaining bottleneck. Best viewed in color.}}{6}{figure.4}\protected@file@percent }
+\newlabel{fig:benchmarks}{{4}{6}{Benchmark comparison on \texttt {uifo\_800\_3000} (1 logical CPU). (a)~Median warm execution drops from 17.68\,s to 0.721\,s ($24.5\times $ speedup). (b)~First-run end-to-end drops from 44.20\,s to 24.41\,s, leaving XLA compilation (19.60\,s, 80\%) as the dominant remaining bottleneck. Best viewed in color}{figure.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Correctness Verification (Double Precision, 101 Frequencies, 193 Parameters)}{6}{subsection.4.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Benchmark Timing Comparison \& Hardware Caveat}{6}{subsection.4.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5}Causal Chain \& Glossary}{6}{section.5}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Phase-by-phase timing comparison on \texttt  {uifo\_800\_3000} (1 logical CPU).}}{7}{table.2}\protected@file@percent }
+\newlabel{tab:benchmarks}{{2}{7}{Phase-by-phase timing comparison on \texttt {uifo\_800\_3000} (1 logical CPU)}{table.2}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Plain-language glossary of key concepts.}}{7}{table.3}\protected@file@percent }
+\newlabel{tab:glossary}{{3}{7}{Plain-language glossary of key concepts}{table.3}{}}
+\gdef \@abspage@last{7}

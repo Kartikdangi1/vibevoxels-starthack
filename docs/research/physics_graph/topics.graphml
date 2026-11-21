@@ -1,0 +1,330 @@
+<?xml version='1.0' encoding='utf-8'?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
+  <key id="d6" for="edge" attr.name="weight" attr.type="double" />
+  <key id="d5" for="edge" attr.name="cites" attr.type="long" />
+  <key id="d4" for="edge" attr.name="papers" attr.type="long" />
+  <key id="d3" for="node" attr.name="label" attr.type="string" />
+  <key id="d2" for="node" attr.name="group" attr.type="string" />
+  <key id="d1" for="node" attr.name="taxonomy" attr.type="string" />
+  <key id="d0" for="node" attr.name="papers" attr.type="long" />
+  <graph edgedefault="undirected">
+    <node id="topic:physics/autodiff_opt">
+      <data key="d0">165</data>
+      <data key="d1">physics</data>
+      <data key="d2">D jax &amp; compiler</data>
+      <data key="d3">Automatic differentiation graph optimization, checkpointing and sparsity</data>
+    </node>
+    <node id="topic:physics/jax_xla">
+      <data key="d0">187</data>
+      <data key="d1">physics</data>
+      <data key="d2">D jax &amp; compiler</data>
+      <data key="d3">JAX, XLA compilation, tracing overhead and custom primitives</data>
+    </node>
+    <node id="topic:physics/low_rank_update">
+      <data key="d0">99</data>
+      <data key="d1">physics</data>
+      <data key="d2">B sparse solvers</data>
+      <data key="d3">Low-rank updates, Sherman-Morrison-Woodbury and Schur complement</data>
+    </node>
+    <node id="topic:physics/sparse_lu">
+      <data key="d0">52</data>
+      <data key="d1">physics</data>
+      <data key="d2">B sparse solvers</data>
+      <data key="d3">Sparse LU factorization and direct linear solvers (KLU, SuperLU, UMFPACK)</data>
+    </node>
+    <node id="topic:physics/implicit_diff">
+      <data key="d0">78</data>
+      <data key="d1">physics</data>
+      <data key="d2">C autodiff &amp; adjoint</data>
+      <data key="d3">Implicit differentiation and adjoint state methods for linear systems</data>
+    </node>
+    <node id="topic:physics/freq_sweep">
+      <data key="d0">83</data>
+      <data key="d1">physics</data>
+      <data key="d2">B sparse solvers</data>
+      <data key="d3">Multi-frequency sweep acceleration, reuse and model order reduction</data>
+    </node>
+    <node id="topic:physics/sideband_mod">
+      <data key="d0">155</data>
+      <data key="d1">physics</data>
+      <data key="d2">A interferometry</data>
+      <data key="d3">Carrier, sideband modulation and transfer matrix formalisms</data>
+    </node>
+    <node id="topic:physics/quantum_noise">
+      <data key="d0">174</data>
+      <data key="d1">physics</data>
+      <data key="d2">A interferometry</data>
+      <data key="d3">Quantum noise, shot noise, radiation pressure and squeezing</data>
+    </node>
+    <node id="topic:physics/ifo_sim">
+      <data key="d0">107</data>
+      <data key="d1">physics</data>
+      <data key="d2">A interferometry</data>
+      <data key="d3">Frequency-domain optical interferometer simulation (Finesse, Differometor)</data>
+    </node>
+    <node id="topic:physics/batched_sparse">
+      <data key="d0">15</data>
+      <data key="d1">physics</data>
+      <data key="d2">B sparse solvers</data>
+      <data key="d3">Batched and vectorized sparse solvers (CPU/SIMD/GPU)</data>
+    </node>
+    <node id="topic:physics/gw_detector">
+      <data key="d0">144</data>
+      <data key="d1">physics</data>
+      <data key="d2">A interferometry</data>
+      <data key="d3">Gravitational-wave detector optical design and topology</data>
+    </node>
+    <node id="topic:physics/adj_quantum_cov">
+      <data key="d0">7</data>
+      <data key="d1">physics</data>
+      <data key="d2">C autodiff &amp; adjoint</data>
+      <data key="d3">Adjoint elimination in covariance / quadratic forms and trace derivatives</data>
+    </node>
+    <node id="topic:physics/diff_optics">
+      <data key="d0">12</data>
+      <data key="d1">physics</data>
+      <data key="d2">C autodiff &amp; adjoint</data>
+      <data key="d3">Differentiable optical and photonic circuit design</data>
+    </node>
+    <edge source="topic:physics/autodiff_opt" target="topic:physics/jax_xla">
+      <data key="d4">99</data>
+      <data key="d5">261</data>
+      <data key="d6">0.391304347826087</data>
+    </edge>
+    <edge source="topic:physics/autodiff_opt" target="topic:physics/low_rank_update">
+      <data key="d4">3</data>
+      <data key="d5">3</data>
+      <data key="d6">0.011494252873563218</data>
+    </edge>
+    <edge source="topic:physics/autodiff_opt" target="topic:physics/sparse_lu">
+      <data key="d4">12</data>
+      <data key="d5">18</data>
+      <data key="d6">0.05853658536585366</data>
+    </edge>
+    <edge source="topic:physics/autodiff_opt" target="topic:physics/implicit_diff">
+      <data key="d4">28</data>
+      <data key="d5">96</data>
+      <data key="d6">0.13023255813953488</data>
+    </edge>
+    <edge source="topic:physics/autodiff_opt" target="topic:physics/diff_optics">
+      <data key="d4">6</data>
+      <data key="d5">7</data>
+      <data key="d6">0.03508771929824561</data>
+    </edge>
+    <edge source="topic:physics/autodiff_opt" target="topic:physics/batched_sparse">
+      <data key="d4">1</data>
+      <data key="d5">2</data>
+      <data key="d6">0.00558659217877095</data>
+    </edge>
+    <edge source="topic:physics/autodiff_opt" target="topic:physics/sideband_mod">
+      <data key="d4">2</data>
+      <data key="d5">0</data>
+      <data key="d6">0.006289308176100629</data>
+    </edge>
+    <edge source="topic:physics/autodiff_opt" target="topic:physics/ifo_sim">
+      <data key="d4">4</data>
+      <data key="d5">5</data>
+      <data key="d6">0.014925373134328358</data>
+    </edge>
+    <edge source="topic:physics/autodiff_opt" target="topic:physics/gw_detector">
+      <data key="d4">2</data>
+      <data key="d5">8</data>
+      <data key="d6">0.006514657980456026</data>
+    </edge>
+    <edge source="topic:physics/autodiff_opt" target="topic:physics/freq_sweep">
+      <data key="d4">1</data>
+      <data key="d5">5</data>
+      <data key="d6">0.004048582995951417</data>
+    </edge>
+    <edge source="topic:physics/autodiff_opt" target="topic:physics/quantum_noise">
+      <data key="d4">0</data>
+      <data key="d5">2</data>
+      <data key="d6">0.0</data>
+    </edge>
+    <edge source="topic:physics/jax_xla" target="topic:physics/low_rank_update">
+      <data key="d4">2</data>
+      <data key="d5">3</data>
+      <data key="d6">0.007042253521126761</data>
+    </edge>
+    <edge source="topic:physics/jax_xla" target="topic:physics/sparse_lu">
+      <data key="d4">7</data>
+      <data key="d5">14</data>
+      <data key="d6">0.03017241379310345</data>
+    </edge>
+    <edge source="topic:physics/jax_xla" target="topic:physics/implicit_diff">
+      <data key="d4">37</data>
+      <data key="d5">94</data>
+      <data key="d6">0.16228070175438597</data>
+    </edge>
+    <edge source="topic:physics/jax_xla" target="topic:physics/freq_sweep">
+      <data key="d4">2</data>
+      <data key="d5">6</data>
+      <data key="d6">0.007462686567164179</data>
+    </edge>
+    <edge source="topic:physics/jax_xla" target="topic:physics/sideband_mod">
+      <data key="d4">1</data>
+      <data key="d5">0</data>
+      <data key="d6">0.002932551319648094</data>
+    </edge>
+    <edge source="topic:physics/jax_xla" target="topic:physics/diff_optics">
+      <data key="d4">2</data>
+      <data key="d5">4</data>
+      <data key="d6">0.01015228426395939</data>
+    </edge>
+    <edge source="topic:physics/jax_xla" target="topic:physics/gw_detector">
+      <data key="d4">2</data>
+      <data key="d5">4</data>
+      <data key="d6">0.0060790273556231</data>
+    </edge>
+    <edge source="topic:physics/jax_xla" target="topic:physics/ifo_sim">
+      <data key="d4">2</data>
+      <data key="d5">6</data>
+      <data key="d6">0.00684931506849315</data>
+    </edge>
+    <edge source="topic:physics/jax_xla" target="topic:physics/batched_sparse">
+      <data key="d4">0</data>
+      <data key="d5">1</data>
+      <data key="d6">0.0</data>
+    </edge>
+    <edge source="topic:physics/low_rank_update" target="topic:physics/sparse_lu">
+      <data key="d4">11</data>
+      <data key="d5">1</data>
+      <data key="d6">0.07857142857142857</data>
+    </edge>
+    <edge source="topic:physics/low_rank_update" target="topic:physics/sideband_mod">
+      <data key="d4">2</data>
+      <data key="d5">0</data>
+      <data key="d6">0.007936507936507936</data>
+    </edge>
+    <edge source="topic:physics/low_rank_update" target="topic:physics/freq_sweep">
+      <data key="d4">5</data>
+      <data key="d5">3</data>
+      <data key="d6">0.02824858757062147</data>
+    </edge>
+    <edge source="topic:physics/low_rank_update" target="topic:physics/batched_sparse">
+      <data key="d4">1</data>
+      <data key="d5">0</data>
+      <data key="d6">0.008849557522123894</data>
+    </edge>
+    <edge source="topic:physics/low_rank_update" target="topic:physics/adj_quantum_cov">
+      <data key="d4">1</data>
+      <data key="d5">0</data>
+      <data key="d6">0.009523809523809525</data>
+    </edge>
+    <edge source="topic:physics/low_rank_update" target="topic:physics/implicit_diff">
+      <data key="d4">0</data>
+      <data key="d5">2</data>
+      <data key="d6">0.0</data>
+    </edge>
+    <edge source="topic:physics/low_rank_update" target="topic:physics/gw_detector">
+      <data key="d4">0</data>
+      <data key="d5">1</data>
+      <data key="d6">0.0</data>
+    </edge>
+    <edge source="topic:physics/low_rank_update" target="topic:physics/diff_optics">
+      <data key="d4">0</data>
+      <data key="d5">1</data>
+      <data key="d6">0.0</data>
+    </edge>
+    <edge source="topic:physics/sparse_lu" target="topic:physics/implicit_diff">
+      <data key="d4">2</data>
+      <data key="d5">5</data>
+      <data key="d6">0.015625</data>
+    </edge>
+    <edge source="topic:physics/sparse_lu" target="topic:physics/batched_sparse">
+      <data key="d4">4</data>
+      <data key="d5">1</data>
+      <data key="d6">0.06349206349206349</data>
+    </edge>
+    <edge source="topic:physics/sparse_lu" target="topic:physics/adj_quantum_cov">
+      <data key="d4">2</data>
+      <data key="d5">0</data>
+      <data key="d6">0.03508771929824561</data>
+    </edge>
+    <edge source="topic:physics/sparse_lu" target="topic:physics/freq_sweep">
+      <data key="d4">7</data>
+      <data key="d5">4</data>
+      <data key="d6">0.0546875</data>
+    </edge>
+    <edge source="topic:physics/implicit_diff" target="topic:physics/batched_sparse">
+      <data key="d4">1</data>
+      <data key="d5">0</data>
+      <data key="d6">0.010869565217391304</data>
+    </edge>
+    <edge source="topic:physics/implicit_diff" target="topic:physics/freq_sweep">
+      <data key="d4">3</data>
+      <data key="d5">1</data>
+      <data key="d6">0.0189873417721519</data>
+    </edge>
+    <edge source="topic:physics/implicit_diff" target="topic:physics/diff_optics">
+      <data key="d4">5</data>
+      <data key="d5">3</data>
+      <data key="d6">0.058823529411764705</data>
+    </edge>
+    <edge source="topic:physics/implicit_diff" target="topic:physics/ifo_sim">
+      <data key="d4">1</data>
+      <data key="d5">2</data>
+      <data key="d6">0.005434782608695652</data>
+    </edge>
+    <edge source="topic:physics/implicit_diff" target="topic:physics/sideband_mod">
+      <data key="d4">0</data>
+      <data key="d5">1</data>
+      <data key="d6">0.0</data>
+    </edge>
+    <edge source="topic:physics/freq_sweep" target="topic:physics/adj_quantum_cov">
+      <data key="d4">2</data>
+      <data key="d5">0</data>
+      <data key="d6">0.022727272727272728</data>
+    </edge>
+    <edge source="topic:physics/freq_sweep" target="topic:physics/gw_detector">
+      <data key="d4">1</data>
+      <data key="d5">0</data>
+      <data key="d6">0.004424778761061947</data>
+    </edge>
+    <edge source="topic:physics/freq_sweep" target="topic:physics/ifo_sim">
+      <data key="d4">1</data>
+      <data key="d5">0</data>
+      <data key="d6">0.005291005291005291</data>
+    </edge>
+    <edge source="topic:physics/sideband_mod" target="topic:physics/quantum_noise">
+      <data key="d4">74</data>
+      <data key="d5">183</data>
+      <data key="d6">0.2901960784313726</data>
+    </edge>
+    <edge source="topic:physics/sideband_mod" target="topic:physics/gw_detector">
+      <data key="d4">11</data>
+      <data key="d5">37</data>
+      <data key="d6">0.03819444444444445</data>
+    </edge>
+    <edge source="topic:physics/sideband_mod" target="topic:physics/ifo_sim">
+      <data key="d4">5</data>
+      <data key="d5">19</data>
+      <data key="d6">0.019455252918287938</data>
+    </edge>
+    <edge source="topic:physics/sideband_mod" target="topic:physics/diff_optics">
+      <data key="d4">0</data>
+      <data key="d5">1</data>
+      <data key="d6">0.0</data>
+    </edge>
+    <edge source="topic:physics/quantum_noise" target="topic:physics/gw_detector">
+      <data key="d4">48</data>
+      <data key="d5">133</data>
+      <data key="d6">0.17777777777777778</data>
+    </edge>
+    <edge source="topic:physics/quantum_noise" target="topic:physics/ifo_sim">
+      <data key="d4">16</data>
+      <data key="d5">36</data>
+      <data key="d6">0.06037735849056604</data>
+    </edge>
+    <edge source="topic:physics/ifo_sim" target="topic:physics/gw_detector">
+      <data key="d4">22</data>
+      <data key="d5">34</data>
+      <data key="d6">0.09606986899563319</data>
+    </edge>
+    <edge source="topic:physics/ifo_sim" target="topic:physics/diff_optics">
+      <data key="d4">3</data>
+      <data key="d5">3</data>
+      <data key="d6">0.02586206896551724</data>
+    </edge>
+  </graph>
+</graphml>

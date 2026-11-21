@@ -1,0 +1,156 @@
+{
+  "n_papers": 1067,
+  "window": "2016-01 to 2026-11",
+  "untagged": 173,
+  "years": {
+    "2016": 56,
+    "2017": 48,
+    "2018": 61,
+    "2019": 66,
+    "2020": 76,
+    "2021": 79,
+    "2022": 80,
+    "2023": 77,
+    "2024": 105,
+    "2025": 144,
+    "2026": 275
+  },
+  "categories": {
+    "quant-ph": 265,
+    "physics.optics": 188,
+    "cs.LG": 137,
+    "astro-ph.IM": 128,
+    "math.NA": 122,
+    "gr-qc": 115,
+    "physics.comp-ph": 69,
+    "physics.ins-det": 65,
+    "math.OC": 53,
+    "math-ph": 49,
+    "cond-mat.mes-hall": 46,
+    "physics.flu-dyn": 45,
+    "math.AP": 43,
+    "physics.atom-ph": 36,
+    "astro-ph.CO": 35,
+    "cs.AI": 34,
+    "cs.MS": 32,
+    "eess.SY": 32,
+    "cs.CE": 30,
+    "stat.ML": 29,
+    "hep-th": 29,
+    "astro-ph.HE": 24,
+    "cs.CV": 23,
+    "hep-ph": 20,
+    "cs.DC": 19,
+    "cs.CL": 18,
+    "math.FA": 18,
+    "cs.RO": 17,
+    "math.SP": 15,
+    "cs.PL": 15,
+    "math.DS": 15,
+    "physics.app-ph": 15,
+    "cs.IT": 14,
+    "physics.chem-ph": 11,
+    "cond-mat.str-el": 11,
+    "eess.SP": 11,
+    "cond-mat.quant-gas": 10,
+    "cond-mat.mtrl-sci": 10,
+    "cs.NE": 9,
+    "hep-ex": 9
+  },
+  "venues": {
+    "neurips": 16,
+    "ieee transactions": 10,
+    "science": 6,
+    "iclr": 4,
+    "aaai": 2,
+    "icml": 2,
+    "nature": 2,
+    "icra": 1,
+    "tmlr": 1,
+    "corl": 1,
+    "jmlr": 1,
+    "siggraph": 1,
+    "iros": 1,
+    "iccv": 1
+  },
+  "subfields": {
+    "ifo_sim": {
+      "group": "A interferometry",
+      "label": "Frequency-domain optical interferometer simulation (Finesse, Differometor)",
+      "count": 107,
+      "with_code": 1
+    },
+    "gw_detector": {
+      "group": "A interferometry",
+      "label": "Gravitational-wave detector optical design and topology",
+      "count": 144,
+      "with_code": 3
+    },
+    "quantum_noise": {
+      "group": "A interferometry",
+      "label": "Quantum noise, shot noise, radiation pressure and squeezing",
+      "count": 174,
+      "with_code": 1
+    },
+    "sideband_mod": {
+      "group": "A interferometry",
+      "label": "Carrier, sideband modulation and transfer matrix formalisms",
+      "count": 155,
+      "with_code": 2
+    },
+    "sparse_lu": {
+      "group": "B sparse solvers",
+      "label": "Sparse LU factorization and direct linear solvers (KLU, SuperLU, UMFPACK)",
+      "count": 52,
+      "with_code": 5
+    },
+    "freq_sweep": {
+      "group": "B sparse solvers",
+      "label": "Multi-frequency sweep acceleration, reuse and model order reduction",
+      "count": 83,
+      "with_code": 1
+    },
+    "low_rank_update": {
+      "group": "B sparse solvers",
+      "label": "Low-rank updates, Sherman-Morrison-Woodbury and Schur complement",
+      "count": 99,
+      "with_code": 7
+    },
+    "batched_sparse": {
+      "group": "B sparse solvers",
+      "label": "Batched and vectorized sparse solvers (CPU/SIMD/GPU)",
+      "count": 15,
+      "with_code": 2
+    },
+    "implicit_diff": {
+      "group": "C autodiff & adjoint",
+      "label": "Implicit differentiation and adjoint state methods for linear systems",
+      "count": 78,
+      "with_code": 16
+    },
+    "adj_quantum_cov": {
+      "group": "C autodiff & adjoint",
+      "label": "Adjoint elimination in covariance / quadratic forms and trace derivatives",
+      "count": 7,
+      "with_code": 0
+    },
+    "diff_optics": {
+      "group": "C autodiff & adjoint",
+      "label": "Differentiable optical and photonic circuit design",
+      "count": 12,
+      "with_code": 1
+    },
+    "jax_xla": {
+      "group": "D jax & compiler",
+      "label": "JAX, XLA compilation, tracing overhead and custom primitives",
+      "count": 187,
+      "with_code": 49
+    },
+    "autodiff_opt": {
+      "group": "D jax & compiler",
+      "label": "Automatic differentiation graph optimization, checkpointing and sparsity",
+      "count": 165,
+      "with_code": 41
+    }
+  }
+}

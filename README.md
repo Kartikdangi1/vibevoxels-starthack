@@ -104,8 +104,8 @@ CPU-only benchmark, but documented in case it's useful: [docs/RESOURCES.md](docs
 ## Status
 
 - [x] Get a working Docker environment running `start_here.py` (also works bare-metal in WSL2/Linux) — verified
-- [x] Run unmodified baseline benchmark: [benchmarks/results/before-original.json](benchmarks/results/before-original.json) (55.14 s)
-- [x] Profile to find the bottleneck ([tools/profile_parts.py](tools/profile_parts.py), [tools/profile_compile.py](tools/profile_compile.py))
-- [x] Optimize `differometor/`, keep correctness checks passing
-- [x] Re-run benchmark, compare before/after: [benchmarks/results/after-shared-lu-grouped-fill.json](benchmarks/results/after-shared-lu-grouped-fill.json) (31.15 s, −44%)
-- [x] Write the short approach note: [docs/notes/approach.md](docs/notes/approach.md)
+- [x] Run unmodified baseline benchmark: [benchmarks/results/before-original.json](benchmarks/results/before-original.json) (55.14 s on a laptop; 44.2 s on the official Xeon baseline)
+- [x] Profile to find the bottleneck ([tools/profile_parts.py](tools/profile_parts.py), [tools/profile_compile.py](tools/profile_compile.py)); `solve()` was a dense LU on a 99.5 % zero matrix
+- [x] Optimize `differometor/` — final solution is the host sparse solver (see [OPTIMIZATION_LOG.md](OPTIMIZATION_LOG.md)); `DIFFEROMETOR_BACKEND=jax` selects the in-graph sparse path, `DIFFEROMETOR_SOLVER=dense` the original dense path
+- [x] Re-run benchmark, compare before/after (see [docs/notes/combined_solution.md](docs/notes/combined_solution.md))
+- [x] Approach notes: [docs/notes/approach.md](docs/notes/approach.md), [docs/notes/sparse_solve.md](docs/notes/sparse_solve.md), [docs/notes/eidothea_literature_verdicts.md](docs/notes/eidothea_literature_verdicts.md)
