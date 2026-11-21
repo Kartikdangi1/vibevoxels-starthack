@@ -772,14 +772,29 @@ def _csc_construct(*args, **kwargs):  # only used if SuperLU.L / .U are requeste
 class SparsePattern:
     """Fixed sparsity pattern (rows, cols) of an n x n matrix in sorted CSC order."""
 
-    def __init__(self, rows, cols, n):
+    def __init__(self, rows, cols, n, *, blocks=1):
         rows = np.asarray(rows, np.int64)
         cols = np.asarray(cols, np.int64)
-        self.n, self.rows, self.cols = n, rows, cols
-        self.order = np.lexsort((rows, cols))  # by column, then row (canonical CSC)
-        self.indices = np.ascontiguousarray(rows[self.order], dtype=np.intc)
-        self.indptr = np.ascontiguousarray(
-            np.concatenate([[0], np.cumsum(np.bincount(cols, minlength=n))]), dtype=np.intc)
+        order = np.lexsort((rows, cols))  # by column, then row (canonical CSC)
+        indices = rows[order]
+        indptr = np.concatenate([[0], np.cumsum(np.bincount(cols, minlength=n))])
+        if blocks > 1:
+            # Disjoint column ranges preserve the local order, including equal
+            # coordinates. Keep the original COO order for refinement residuals.
+            block = np.arange(blocks, dtype=np.int64)[:, None]
+            coordinate_offsets = block * n
+            entry_offsets = block * rows.size
+            order = (order + entry_offsets).reshape(-1)
+            indices = (indices + coordinate_offsets).reshape(-1)
+            indptr = np.concatenate([
+                (indptr[:-1] + entry_offsets).reshape(-1), [blocks * rows.size],
+            ])
+            rows = (rows + coordinate_offsets).reshape(-1)
+            cols = (cols + coordinate_offsets).reshape(-1)
+        self.n, self.rows, self.cols = n * blocks, rows, cols
+        self.order = order
+        self.indices = np.ascontiguousarray(indices, dtype=np.intc)
+        self.indptr = np.ascontiguousarray(indptr, dtype=np.intc)
 
     def matvec(self, values, x, trans):
         """A x (trans 'N'), A^T x ('T') or A^H x ('H') for x of shape (n,) or (n, k)."""
@@ -798,13 +813,13 @@ class SparsePattern:
 _PATTERNS = {}
 
 
-def _pattern(rows, cols, n):
-    rows = np.asarray(rows)
-    cols = np.asarray(cols)
-    key = (n, rows.shape[0], hash(rows.tobytes()), hash(cols.tobytes()))
+def _pattern(rows, cols, n, *, blocks=1):
+    rows = np.asarray(rows, np.int64)
+    cols = np.asarray(cols, np.int64)
+    key = (n, blocks, rows.tobytes(), cols.tobytes())
     pattern = _PATTERNS.get(key)
     if pattern is None:
-        pattern = _PATTERNS[key] = SparsePattern(rows, cols, n)
+        pattern = _PATTERNS[key] = SparsePattern(rows, cols, n, blocks=blocks)
     return pattern
 
 
@@ -821,14 +836,14 @@ class RefinedLU:
     Factorisation options are SuperLU's defaults, exactly as `scipy.sparse.linalg.splu`.
     """
 
-    def __init__(self, values, rows, cols, n, refine=1):
-        self.pattern = _pattern(rows, cols, n)
+    def __init__(self, values, rows, cols, n, refine=1, *, blocks=1):
+        self.pattern = _pattern(rows, cols, n, blocks=blocks)
         self.values = np.asarray(values, dtype=np.complex128)
         self.refine = refine
         data = np.ascontiguousarray(self.values[self.pattern.order])
         try:
             self.lu = _superlu().gstrf(
-                n, data.shape[0], data, self.pattern.indices, self.pattern.indptr,
+                self.pattern.n, data.shape[0], data, self.pattern.indices, self.pattern.indptr,
                 csc_construct_func=_csc_construct, ilu=False,
                 options=dict(DiagPivotThresh=None, ColPerm=None, PanelSize=None, Relax=None))
         except RuntimeError:  # exactly singular
@@ -848,9 +863,6 @@ def _factor(values, rows, cols, n):
     return RefinedLU(values, rows, cols, n)
 
 
-_BATCHED_PATTERNS = {}
-
-
 class BatchedLU:
     """Factorise F same-pattern systems at once as one block-diagonal sparse matrix.
 
@@ -864,14 +876,10 @@ class BatchedLU:
     def __init__(self, values, rows, cols, n):
         values = np.asarray(values, dtype=np.complex128)
         self.F, self.n = values.shape[0], n
-        key = (n, self.F, hash(np.asarray(rows).tobytes()), hash(np.asarray(cols).tobytes()))
-        big = _BATCHED_PATTERNS.get(key)
-        if big is None:
-            offsets = (np.arange(self.F) * n)[:, None]
-            big = _BATCHED_PATTERNS[key] = (
-                (np.asarray(rows)[None, :] + offsets).reshape(-1), (np.asarray(cols)[None, :] + offsets).reshape(-1))
         self.parts = None
-        self.lu = RefinedLU(values.reshape(-1), big[0], big[1], self.F * n) if self.F > 1 else None
+        self.lu = None
+        if self.F > 1:
+            self.lu = RefinedLU(values.reshape(-1), rows, cols, n, blocks=self.F)
         if self.lu is None or self.lu.lu is None:
             self.parts = [RefinedLU(values[f], rows, cols, n) for f in range(self.F)]
 
