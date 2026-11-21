@@ -14,7 +14,7 @@
 \graphicspath{{figures/}}
 
 \title{\textbf{Faster Differentiable Interferometry from Scratch:}\\
-\large Combining a 10-Year Literature Scan, Sparse Direct Solvers, Adjoint Identities, and Host-Side \texttt{jaxpr} Execution in \texttt{Differometor}}
+\large Combining a 15-Year Literature Scan, Native C++ Batched Sparse LU, Wirtinger-Dual Component Kernels, Adjoint Identities, and Host-Side Readout in \texttt{Differometor}}
 \author{START Hack Munich 2026 --- Feyer: Faster Physics}
 \date{November 21, 2026}
 
@@ -22,14 +22,14 @@
 \maketitle
 
 \begin{abstract}
-We document the \texttt{final/combined} branch of \texttt{Differometor}, unifying our 10-year automated literature scan (1,067 papers, 2016--2026), five literature-backed algorithmic optimizations, and host-side \texttt{custom\_vjp} execution with block-diagonal sparse LU factorization for the \texttt{uifo\_800\_3000} gravitational-wave interferometer benchmark (101 frequencies, 193 design parameters). Starting from zero assumed background, every mathematical concept is derived step by step with sanity checks and worked numbers. Combining the MISO quantum-noise quadratic identity (Verdict 1), sparse LU reuse (Verdict 2), values-only COO/CSC assembly and sparse VJPs (Verdict 3), frequency-hoisted sparse noise contraction (Verdict 4), grouped component dispatch (Verdict 5), and host-side NumPy \texttt{jaxpr} execution with JVP transposition and block-diagonal \texttt{\_superlu} factorization (\texttt{differometor/host.py}) cuts median warm execution time on 1 logical CPU from \textbf{17.68\,s} (Intel Xeon Platinum 8468 baseline) to \textbf{0.411\,s} (Intel Core i7-1355U WSL2)---a \textbf{43.0$\times$} warm speedup---while cutting XLA compilation from \textbf{22.92\,s} to \textbf{1.52\,s} (\textbf{15.1$\times$} faster) and first-run end-to-end time from \textbf{44.20\,s} to \textbf{3.97\,s} (\textbf{11.1$\times$} faster). Log-sensitivity error remains at $5.37\times 10^{-6}$ (matching the baseline, within the $10^{-5}$ bar), finite-difference gradient agreement holds to $2.1\times 10^{-9}$ ($h=0.001$) / $4.1\times 10^{-9}$ ($h=0.0005$), and \texttt{DIFFEROMETOR\_BACKEND=jax} preserves the full in-graph JAX sparse path as an automatic fallback.
+We document the \texttt{final/combined-v2} branch of \texttt{Differometor}, unifying our 15-year automated literature scan (2,342 papers, 2011--2026), five literature-backed algorithmic optimizations, host-side \texttt{jaxpr} execution with primal caching, native Wirtinger-dual component kernels (\texttt{native\_kernels.py}), host-side readout detectors (\texttt{components.py}), and a custom C++ Gilbert--Peierls batched sparse LU solver with KLU-style pivot reuse (\texttt{differometor/native/dfsparse.cpp}). On the \texttt{uifo\_800\_3000} gravitational-wave interferometer benchmark (101 frequencies, 193 design parameters, \textbf{1 logical CPU}, \texttt{complex128}/\texttt{float64}), apples-to-apples measurements on an AMD EPYC 9334 cut median warm execution from \textbf{16.952\,s} (baseline) to \textbf{0.0969\,s} (\textbf{174.9$\times$ faster}), XLA compilation from \textbf{19.301\,s} to \textbf{0.348--0.524\,s} (\textbf{37--55$\times$ faster}), and first-run end-to-end wall time from \textbf{35.829\,s} to \textbf{0.895--0.964\,s} (\textbf{37.2--40.0$\times$ faster}). Log-sensitivity error remains $5.374\times 10^{-6}$ (identical to baseline, within the $10^{-5}$ bar), finite-difference gradient agreement holds to $4.5\times 10^{-9}$ ($h=0.0005$), and \texttt{DIFFEROMETOR\_NATIVE=0} (SuperLU) and \texttt{DIFFEROMETOR\_BACKEND=jax} (in-graph sparse JAX) remain as automatic fallbacks.
 \end{abstract}
 
 % ==============================================================================
 \section{Vocabulary First \& The Central Analogy}
 % ==============================================================================
 
-\textbf{Central Analogy.} Designing a gravitational-wave interferometer in \texttt{Differometor} is like tuning a 193-knob sound mixer inside a hall of mirrors. For each of 101 musical pitches (frequencies), light bounces between mirrors, and we want to know two things: how loud the signal is at the microphone (sensitivity), and which direction to turn each of the 193 knobs to make it quieter to noise (gradient). In the original code, checking how light bounces meant filling out a giant $751\times 751$ grid where 99.5\% of the squares are blank zeros, solving the grid six separate times per pitch, and compiling 19-way switches for every component. Our optimizations stop writing down the blank zeros, solve the grid once per pitch and reuse the scratchpad factors four ways, and replace a redundant second solve with a direct dot product.
+\textbf{Central Analogy.} Designing a gravitational-wave interferometer in \texttt{Differometor} is like tuning a 193-knob sound mixer inside a hall of mirrors. For each of 101 musical pitches (frequencies), light bounces between mirrors, and we want to know two things: how loud the signal is at the microphone (sensitivity), and which direction to turn each of the 193 knobs to make it quieter to noise (gradient). In the original code, checking how light bounces meant filling out a giant $751\times 751$ grid where 99.55\% of the squares are blank zeros, solving the grid six separate times per pitch, and compiling 19-way switches for every component. Our optimizations stop writing down the blank zeros, solve the grid once per pitch in C++ (reusing pivot order across pitches), reuse the factors four ways, replace a redundant second solve with a direct dot product, and evaluate component physics and readout directly on the host.
 
 Every technical term used in this report is defined below in plain words before it appears:
 
@@ -39,46 +39,47 @@ Every technical term used in this report is defined below in plain words before 
     \item \textbf{Signal (Sideband):} Tiny ripples of light created at $\pm f$ around the carrier when a gravitational wave of frequency $f$ shakes the mirrors.
     \item \textbf{Quantum Noise:} Unavoidable randomness from photons hitting mirrors (radiation pressure) and arriving at the detector (shot noise).
     \item \textbf{Sensitivity:} The ratio of quantum noise to gravitational-wave signal at the detector; smaller means a better detector.
-    \item \textbf{Sparse Matrix:} A grid of numbers where almost all entries are zero (here, $751\times 751$ has 564,001 entries, but only $\sim$2,700 are nonzero).
+    \item \textbf{Sparse Matrix:} A grid of numbers where almost all entries are zero (here, $751\times 751$ has 564,001 entries, but only 2,537 are nonzero).
     \item \textbf{LU Factorization:} Splitting a square matrix $A$ into a lower-triangular matrix $L$ and an upper-triangular matrix $U$ ($A = LU$) so solving $Ax = b$ becomes fast forward/back-substitution.
     \item \textbf{Transpose ($A^T$) and Conjugate Transpose ($A^H$):} Flipping a matrix across its diagonal ($A^T_{ij} = A_{ji}$), and for $A^H$ also flipping the sign of every imaginary part ($A^H = \overline{A}^T$).
     \item \textbf{Automatic Differentiation (Autodiff / VJP):} Computing exact derivatives of a program by running it backward (a Vector--Jacobian Product, or VJP) from the final scalar loss to all 193 knobs.
+    \item \textbf{Wirtinger Dual Number:} A compact forward-mode derivative tracker separating holomorphic ($A_i\,dx_i$) and anti-holomorphic ($B_i\,\overline{dx}_i$) parts so complex conjugates differentiate cleanly.
     \item \textbf{JAX / XLA:} A Python library (JAX) that traces array math and compiles it into machine code using the XLA compiler.
     \item \textbf{COO / CSC Format:} Compact ways to store a sparse matrix: COO stores lists of $(\text{row}, \text{col}, \text{value})$ triples; CSC groups nonzeros by column for fast LU solving.
 \end{itemize}
 
 % ==============================================================================
-\section{The Problem \& The 10-Year Literature Scan (2016--2026)}
+\section{The Problem \& The 15-Year Literature Scan (2011--2026)}
 % ==============================================================================
 
-The \texttt{uifo\_800\_3000} benchmark evaluates a $3\times 3$ Universal Interferometer topology across $V = 101$ frequencies ($800$--$3000\,\text{Hz}$) and $P = 193$ physical parameters on \textbf{1 logical CPU} in double precision (\texttt{complex128} / \texttt{float64}). The baseline run on an Intel Xeon Platinum 8468 (\texttt{benchmarks/cpu-baseline.json}) takes \textbf{44.20\,s} end-to-end: 3.66\,s for imports and setup, 22.92\,s for XLA lowering and compilation, and 17.63\,s for first-run execution (17.68\,s median warm execution).
+The \texttt{uifo\_800\_3000} benchmark evaluates a $3\times 3$ Universal Interferometer topology across $V = 101$ frequencies ($800$--$3000\,\text{Hz}$) and $P = 193$ physical parameters on \textbf{1 logical CPU} in double precision (\texttt{complex128} / \texttt{float64}). On an AMD EPYC 9334 (1 CPU, \texttt{results/amd-epyc/baseline\_cpu1.json}), the unmodified baseline takes \textbf{35.829\,s} end-to-end: 0.997\,s for imports and setup, 19.301\,s for XLA lowering and compilation, and 15.532\,s for first-run execution (16.952\,s median warm execution). On the Intel Xeon Platinum 8468 reference (\texttt{benchmarks/cpu-baseline.json}), it takes \textbf{44.204\,s} end-to-end (22.918\,s compile, 17.679\,s warm median).
 
-To avoid guessing optimizations by trial and error, we ran an automated 10-year literature scan using \textbf{Eidothea} across arXiv (2016--2026), Semantic Scholar, and the 99-page \texttt{Differometor} documentation. The scan harvested \textbf{1,067 unique papers}, \textbf{20,915 arXiv reference edges}, and \textbf{1,066 citation records}, partitioned into four taxonomy groups: \textbf{A.~Interferometry}, \textbf{B.~Sparse Solvers}, \textbf{C.~Autodiff \& Adjoint}, and \textbf{D.~JAX \& Compiler}.
+To ground our optimizations in published methods, we ran an automated 15-year literature scan using \textbf{Eidothea} across arXiv (2011--2026), Semantic Scholar, and the 99-page \texttt{Differometor} documentation. Extending our initial 10-year scan (1,067 papers, 13 subfields) to 15 years harvested \textbf{2,342 unique papers}, \textbf{37,826 arXiv reference edges}, and \textbf{27 subfields} across 6 taxonomy groups: \textbf{A.~Interferometry}, \textbf{B.~Sparse Solvers}, \textbf{C.~Autodiff \& Adjoint}, \textbf{D.~JAX \& Compiler}, \textbf{E.~Host \& Numerics}, and \textbf{F.~Cross-Domain}.
 
 \begin{figure}[t]
     \centering
     \includegraphics[width=\linewidth]{fig3_eidothea_literature_landscape.pdf}
-    \caption{Ten-year Eidothea literature scan (2016--2026, 1,067 unique papers). (a)~Annual publication growth with key milestones from Basker sparse LU (2016) to RapidDOC and JAX-AMG (2026). (b)~Paper counts across the 13 taxonomy subfields colored by cluster. Best viewed in color.}
+    \caption{Fifteen-year Eidothea literature scan (2011--2026, 2,342 unique papers). (a)~Annual publication growth with catalog-verified milestones from Basker sparse LU (2016) to SABLE and ADSPICE (2026). (b)~Top 16 of 27 taxonomy subfields colored by group (A--F). Best viewed in color.}
     \label{fig:literature}
 \end{figure}
 
-Figure~\ref{fig:literature} summarizes the 10-year trajectory. Notice the sharp acceleration in 2024--2026 (from 77 papers in 2023 to 275 in 2026) driven by differentiable sparse solvers, JAX compiler optimization, and digital discovery of gravitational-wave detectors (Urania/UIFO and Differometor). Table~\ref{tab:verdicts} maps the five highest-leverage literature verdicts directly to our implemented changes.
+Figure~\ref{fig:literature} summarizes the 15-year trajectory, and Table~\ref{tab:verdicts} maps the verified literature backing to our implemented optimizations (correcting misattributed citations caught during the 15-year catalog audit in \texttt{eidothea\_literature\_verdicts\_15y.md}).
 
 \begin{table}[ht]
 \centering
 \small
-\begin{tabular}{@{}cllp{0.22\linewidth}@{}}
+\begin{tabular}{@{}cllp{0.23\linewidth}@{}}
 \toprule
-\textbf{Verdict} & \textbf{Optimization} & \textbf{Key Literature} & \textbf{Target File(s)} \\
+\textbf{Step} & \textbf{Optimization} & \textbf{Verified Literature Backing} & \textbf{Target File(s)} \\
 \midrule
-1 & Eliminate 2nd quantum-noise solve & Klimesch \& Krenn; Miao et al. (2020) & \texttt{simulate.py} \\
-2 & Reuse 1 \texttt{splu(A)} 4 ways + LRU cache & RapidDOC (2026); Hovland (2024) & \texttt{sparse\_solve.py} \\
-3 & Sparse COO/CSC assembly \& sparse VJP & Hovland (2024); JAX-AMG (2026) & \texttt{sparse\_solve.py}, \texttt{simulate.py} \\
-4 & Hoist freq-independent $N$ + sparse $w^H N w$ & Klimesch \& Krenn Sec.\,2.3.5 & \texttt{simulate.py} \\
-5 & Per-system slim \texttt{lax.switch} dispatch & Lohoff \& Neftci (2024); TMMax (2025) & \texttt{simulate.py} \\
+1 & Eliminate 2nd quantum-noise solve & Klimesch \& Krenn; ADSPICE (\texttt{2611.23571}) & \texttt{simulate.py}, \texttt{host.py} \\
+2 & Reuse 1 LU 4 ways + block-diag/KLU & SABLE (\texttt{2606.07099}); Gilbert--Peierls / KLU & \texttt{sparse\_solve.py}, \texttt{dfsparse.cpp} \\
+3 & Sparse COO/CSC assembly \& sparse VJP & Hovland (\texttt{2404.17039}); APF (\texttt{2306.09257}) & \texttt{sparse\_solve.py}, \texttt{host.py} \\
+4 & Hoist freq-independent $N$ + $w^H N w$ & Klimesch \& Krenn Sec.\,2.3.5 & \texttt{simulate.py}, \texttt{host.py} \\
+5 & Grouped dispatch + JVP-transpose / kernels & \emph{You Only Linearize Once} (\texttt{2204.10923}) & \texttt{host.py}, \texttt{native\_kernels.py} \\
 \bottomrule
 \end{tabular}
-\caption{Summary of the five implemented Eidothea verdicts and their primary literature backing.}
+\caption{Summary of the five implemented optimization pillars and their catalog-verified literature backing.}
 \label{tab:verdicts}
 \end{table}
 
@@ -86,103 +87,96 @@ Figure~\ref{fig:literature} summarizes the 10-year trajectory. Notice the sharp 
 \section{Step-by-Step From-Scratch Derivations}
 % ==============================================================================
 
-\subsection{Verdict 1: Eliminating the Redundant Quantum-Noise Solve}
+\subsection{Eliminating the Redundant Quantum-Noise Solve}
 
 \textbf{What the physics asks for.} At each frequency $f$, the quantum-noise power at the detector port $c \in \mathbb{C}^{751}$ is:
 \begin{equation}
 S_{\text{quantum}}(f) \propto \operatorname{Re}\!\left(c^H A(f)^{-1} N A(f)^{-H} c\right),
 \end{equation}
-where $A(f) \in \mathbb{C}^{751\times 751}$ is the signal matrix and $N = N^H$ is the noise covariance matrix.
+where $A(f) \in \mathbb{C}^{751\times 751}$ is the signal matrix and $N$ is the noise covariance matrix.
 
 \begin{enumerate}[leftmargin=1.6em,itemsep=3pt]
     \item \textbf{Step 1 (First solve):} Define the detector noise-weight vector $w = A^{-H} c$ by solving $A^H w = c$. \emph{Why:} Solving once for the 1 detector vector $c$ avoids inverting $A$ for all 751 input noise ports.
     \item \textbf{Step 2 (What the old code did):} The baseline computed $u = N w$, solved a \emph{second} $751\times 751$ system $A v = u$ (giving $v = A^{-1} N w$), and took the dot product $\operatorname{Re}(c^H v)$.
-    \item \textbf{Step 3 (The adjoint identity):} Rewrite $c^H v$ using the rule $(XY)^H = Y^H X^H$:
+    \item \textbf{Step 3 (The adjoint identity):} Rewrite $c^H v$ using $(XY)^H = Y^H X^H$:
     \begin{equation}
     c^H v = c^H A^{-1} N w = \left(A^{-H} c\right)^H (N w) = w^H (N w).
     \end{equation}
-    Because $w = A^{-H} c$ was \emph{already computed} in Step 1, the second solve $A v = N w$ is 100\% redundant!
+    Because $w = A^{-H} c$ was \emph{already computed} in Step 1, the second solve $A v = N w$ is 100\% redundant.
 \end{enumerate}
 
 \textbf{Sanity check (1-variable case).} If $A = a$, $N = n$, $c = 1$ are plain real numbers: Step 1 gives $w = 1/a$. The old code computed $u = n/a$, solved $v = u/a = n/a^2$, and multiplied $c \cdot v = n/a^2$. Our identity computes $w \cdot (n w) = (1/a)(n/a) = n/a^2$ directly---same answer, zero second division.
 
-\textbf{Worked numbers.} Across 101 frequencies, removing the second solve eliminates 101 forward solves and 101 backward solves = \textbf{202 of the 606} large $751\times 751$ solves (a \textbf{33.3\%} cut before any caching). \emph{Caveat:} This identity is exact only because the readout vector $c$ and the matrix $A$ match; if a different matrix were used for the second propagation, the identity would not hold.
+\textbf{Worked numbers.} Across 101 frequencies, removing the second solve eliminates 101 forward solves and 101 backward solves = \textbf{202 of the 606} large $751\times 751$ solves (a \textbf{33.3\%} cut before any caching).
 
-\subsection{Verdict 2: One Sparse LU Factorization Per Frequency, Reused Four Ways}
+\subsection{One Sparse LU Factorization Per Frequency, Reused Four Ways}
 
-After Verdict 1, each frequency $f_k$ ($k = 0,\dots,100$) still needs four linear solves against the \emph{exact same} matrix $A(f_k)$:
+After eliminating the second solve, each frequency $f_k$ ($k = 0,\dots,100$) still needs four linear solves against the \emph{exact same} matrix $A(f_k)$:
 \begin{enumerate}[leftmargin=1.6em,itemsep=2pt]
     \item \textbf{Signal forward:} $A x = b$ (\texttt{trans='N'}).
-    \item \textbf{Noise forward:} $A^H w = c \iff A^T \overline{w} = \overline{c}$ (\texttt{trans='T'} on conjugated right-hand side $\overline{c}$, then conjugate the result). \emph{Why:} Taking the complex conjugate of both sides of $A^H w = c$ turns $A^H = \overline{A}^T$ into plain $A^T$!
-    \item \textbf{Noise backward:} $A \mu = g$ (\texttt{trans='N'} inside \texttt{\_host\_transpose\_solve\_bwd}).
-    \item \textbf{Signal backward:} $A^T \lambda = g$ (\texttt{trans='T'} inside \texttt{\_host\_system\_solve\_bwd}).
+    \item \textbf{Noise forward:} $A^H w = c \iff A^T \overline{w} = \overline{c}$ (\texttt{trans='T'} on conjugated $\overline{c}$, or \texttt{trans='H'} directly).
+    \item \textbf{Noise backward:} $A \mu = g$ (\texttt{trans='N'}).
+    \item \textbf{Signal backward:} $A^T \lambda = g$ (\texttt{trans='T'}).
 \end{enumerate}
 
-\textbf{Why one LU serves all four.} Once SciPy's \texttt{splu(A)} computes $P_r A P_c = L U$, solving $A^T \lambda = g$ simply runs back- and forward-substitution on $U^T$ and $L^T$ in $O(\text{nnz})$ time without re-factoring $A$. We store the 101 \texttt{SuperLU} objects in a host-side \texttt{OrderedDict} LRU cache (\texttt{\_CACHE\_SIZE = 6}) keyed by a 16-byte \texttt{blake2b} content digest of $(\text{base}, \text{rows}, \text{cols}, \text{vals})$.
+\textbf{Worked numbers.} Total $751\times 751$ LU factorizations per forward+backward pass drop from \textbf{606} (baseline) $\to$ \textbf{404} $\to$ \textbf{101}, a \textbf{6.0$\times$ reduction}.
 
-\textbf{Worked numbers.} Total $751\times 751$ LU factorizations per forward+backward pass drop from \textbf{606} (baseline) $\to$ \textbf{404} (Verdict 1) $\to$ \textbf{101} (Verdicts 1+2), a \textbf{6.0$\times$ reduction}. \emph{Caveat:} A cache miss simply re-factors $A$, so numerical results never depend on cache state; however, holding 6 sets of 101 LU factors trades a few tens of megabytes of host RAM for speed.
-
-\subsection{Verdict 3: Sparse COO/CSC Assembly \& Exact Complex Sparse VJP}
+\subsection{Sparse COO/CSC Assembly \& Exact Complex Sparse VJP}
 
 \begin{figure}[t]
     \centering
     \includegraphics[width=\linewidth]{fig1_matrix_sparsity_and_work.pdf}
-    \caption{Sparsity structure and algorithmic work reduction on \texttt{uifo\_800\_3000}. (a)~All three system matrices are $>99\%$ zeros. (b)~Combining Verdicts 1--4 cuts $751\times 751$ LU factorizations by $6.0\times$, VJP matrix multiplies by $209\times$, and quantum-noise matvec operations by $742\times$. Best viewed in color.}
+    \caption{Sparsity structure and algorithmic work reduction on \texttt{uifo\_800\_3000}. (a)~All three system matrices are $>99\%$ zeros (680, 2,537, and 272 nonzeros). (b)~Combining sparsity and adjoint identities cuts $751\times 751$ LU factorizations by $6.0\times$, VJP matrix multiplies by $222\times$, and quantum-noise matvec operations by $2,074\times$. Best viewed in color.}
     \label{fig:sparsity}
 \end{figure}
 
-Figure~\ref{fig:sparsity}(a) shows that \texttt{signal\_matrix} ($751\times 751$) has only $\sim$2,700 nonzeros (\textbf{0.48\%} density; 99.52\% zeros). In the baseline, JAX allocated dense $(101, 751, 751)$ arrays ($\sim$91\,MB each), \texttt{csc\_matrix(dense)} scanned 56.96\,million entries per solve call to rediscover the zeros, and the backward pass computed a dense outer product $-\lambda x^T$ across all 56.96\,million entries before throwing 99.52\% away.
+Figure~\ref{fig:sparsity}(a) shows that \texttt{signal\_matrix} ($751\times 751$) has only \textbf{2,537 nonzeros} (\textbf{0.45\%} density; 99.55\% zeros), \texttt{carrier\_matrix} ($286\times 286$) has \textbf{680 nonzeros} (\textbf{0.83\%}), and \texttt{noise\_matrix} ($751\times 751$) has \textbf{272 nonzeros} (\textbf{0.05\%}). In the baseline, JAX allocated dense $(101, 751, 751)$ arrays, scanned 56.96\,million entries per solve call, and computed dense outer products $-\lambda x^T$ across all 56.96\,million entries before throwing 99.55\% away.
 
 \textbf{Step-by-step complex VJP derivation (why there are NO conjugates).}
 JAX defines reverse-mode AD for real-valued losses $L(x)$ of complex variables via Wirtinger derivatives, which for holomorphic linear maps $x = A^{-1} b$ gives:
 \begin{enumerate}[leftmargin=1.6em,itemsep=3pt]
-    \item \textbf{Sanity check ($1\times 1$ complex scalar):} Let $x = b / a$ with $a, b \in \mathbb{C}$, and let $g$ be the incoming cotangent. Perturbing $b \to b + \delta b$ gives $\delta x = \delta b / a$, so in JAX's holomorphic VJP convention the pullback to $b$ is $\bar{b} = a^{-1} g$ (plain $a$, \emph{no} conjugate!). Perturbing $a \to a + \delta a$ gives $\delta x = -a^{-1} (\delta a) x$, so the pullback to $a$ is $\bar{a} = -(a^{-1} g) x$.
-    \item \textbf{General $N\times N$ rule:} For $A x = b$, $\lambda = A^{-T} g$ (plain transpose, \textbf{not} $A^{-H}$!) and $\bar{A} = -\lambda x^T$ (no conjugates!). For the transposed solve $A^T z = y$, $\mu = A^{-1} g$ and $\bar{A} = -z \mu^T$.
-    \item \textbf{Sparse COO pullback:} Because $A$ only varies at the $E \approx 2,700$ active coordinates $(r_e, c_e)$, we never form $-\lambda x^T$. Instead, \texttt{sparse\_solve.py} evaluates:
+    \item \textbf{Sanity check ($1\times 1$ complex scalar):} Let $x = b / a$ with $a, b \in \mathbb{C}$, and let $g$ be the incoming cotangent. Perturbing $b \to b + \delta b$ gives $\delta x = \delta b / a$, so in JAX's holomorphic VJP convention $\bar{b} = a^{-1} g$ (plain $a$, \emph{no} conjugate). Perturbing $a \to a + \delta a$ gives $\delta x = -a^{-1} (\delta a) x$, so $\bar{a} = -(a^{-1} g) x$.
+    \item \textbf{General $N\times N$ rule:} For $A x = b$, $\lambda = A^{-T} g$ (plain transpose, \textbf{not} $A^{-H}$) and $\bar{A} = -\lambda x^T$ (no conjugates). For the transposed solve $A^T z = y$, $\mu = A^{-1} g$ and $\bar{A} = -z \mu^T$.
+    \item \textbf{Sparse COO pullback:} Because $A$ only varies at the $E = 2,537$ active coordinates $(r_e, c_e)$, we never form $-\lambda x^T$. Instead, we evaluate:
     \begin{equation}
-    \bar{v}_e = -\lambda_{r_e}\, x_{c_e} \quad (\text{only for winning entries where } c_e < N).
+    \bar{v}_e = -\lambda_{r_e}\, x_{c_e} \quad (\text{only for winning entries under last-write-wins}).
     \end{equation}
 \end{enumerate}
 
-\textbf{Worked numbers.} This cuts VJP matrix multiplies from $101 \times 751^2 = \mathbf{56,964,101}$ down to $101 \times 2,700 = \mathbf{272,700}$---\textbf{209$\times$ fewer operations} (Figure~\ref{fig:sparsity}(b)). Note that duplicate coordinates follow JAX's ``last write wins'' rule (\texttt{self.winner} mask in \texttt{\_Factored}).
+\textbf{Worked numbers.} This cuts VJP matrix multiplies from $101 \times 751^2 = \mathbf{56,964,101}$ down to $101 \times 2,537 = \mathbf{256,237}$---\textbf{222$\times$ fewer operations} (Figure~\ref{fig:sparsity}(b)).
 
-\subsection{Verdict 4: Hoisting Frequency-Independent Noise \& Sparse Contraction}
+\subsection{Hoisting Frequency-Independent Noise \& Sparse Contraction}
 
-None of the quantum-noise component functions (\texttt{vacuum\_quantum\_noise}, \texttt{loss\_quantum\_noise}, \texttt{squeezer}) depend on the gravitational-wave frequency $f$. Yet the baseline built 101 identical $(751, 751)$ copies of $N$ and ran a dense $751\times 751$ matrix-vector product at each frequency ($101 \times 751^2 \approx 57\text{M}$ ops). In \texttt{\_signal\_and\_noise\_sparse}, we evaluate \texttt{update\_values} once on \texttt{parameters[0]}, apply \texttt{\_last\_wins} to mask duplicate writes, and compute:
+None of the quantum-noise component functions (\texttt{vacuum\_quantum\_noise}, \texttt{loss\_quantum\_noise}, \texttt{squeezer}) depend on the gravitational-wave frequency $f$. Yet the baseline built 101 identical $(751, 751)$ copies of $N$ and ran a dense $751\times 751$ matrix-vector product at each frequency ($\sim 57\text{M}$ ops). We evaluate noise writes once and contract only over the 272 nonzero entries:
 \begin{equation}
 w^H N w = \sum_{m=1}^{\text{nnz}(N)} \operatorname{Re}\!\left(\overline{w}_{r_m}\, N_m\, w_{c_m}\right),
 \end{equation}
-requiring only $101 \times 760 \approx \mathbf{76,760}$ ops---\textbf{742$\times$ fewer operations} and zero $(101, 751, 751)$ allocations.
-
-\subsection{Verdict 5: Slimming \texttt{lax.switch} Dispatch}
-
-In the baseline, \texttt{update()} called \texttt{vmap(lambda i, x: lax.switch(i, FUNCTIONS, x))} over all 19 global component functions at all three call sites (carrier, signal, noise). XLA lowers a 19-way \texttt{switch} inside \texttt{vmap} by emitting a 19-branch \texttt{case} conditional and differentiating all 19 branches in the backward pass. By inspecting \texttt{build.py}, we see that each system only ever uses a fixed subset:
-\begin{itemize}[leftmargin=1.6em,itemsep=2pt]
-    \item \textbf{Carrier:} 4 functions (\texttt{laser}, \texttt{surface}, \texttt{space}, \texttt{dummy\_function}).
-    \item \textbf{Noise:} 4 functions (\texttt{vacuum\_quantum\_noise}, \texttt{loss\_quantum\_noise}, \texttt{squeezer}, \texttt{dummy\_function}).
-    \item \textbf{Signal:} 15 functions (all except \texttt{laser} and the 3 noise functions).
-\end{itemize}
-\texttt{\_dispatcher()} remaps global indices to compact local indices so XLA only lowers and differentiates the active branches at each call site (with \texttt{DIFFEROMETOR\_DISPATCH=full} kept as a fallback).
+requiring only $101 \times 272 = \mathbf{27,472}$ ops---\textbf{2,074$\times$ fewer operations} and zero $(101, 751, 751)$ allocations.
 
 % ==============================================================================
-\section{Combined Host-Side Architecture (\texttt{final/combined})}
+\section{Combined v2 Architecture (\texttt{final/combined-v2})}
 % ==============================================================================
 
 \begin{figure}[t]
     \centering
     \includegraphics[width=\linewidth]{fig4_optimization_pipeline.pdf}
-    \caption{End-to-end simulation and adjoint architecture before (top) and after (bottom) combining Verdicts 1--5 with host-side \texttt{custom\_vjp} execution and block-diagonal \texttt{\_superlu}. Best viewed in color.}
+    \caption{End-to-end simulation and adjoint architecture before (top) and after (bottom) in \texttt{final/combined-v2}, unifying host \texttt{custom\_vjp}, native Wirtinger-dual component kernels, host readout detectors, and C++ batched sparse LU. Best viewed in color.}
     \label{fig:pipeline}
 \end{figure}
 
-Figure~\ref{fig:pipeline} contrasts the baseline dense pipeline with the \texttt{final/combined} architecture. Even after Verdicts 1--5 cut warm in-graph JAX execution to 0.721\,s, XLA lowering and compilation of the matrix-assembly and reverse-mode graphs still took 19.60\,s (80\% of first-run end-to-end time). The \texttt{final/combined} branch resolves this by unifying all four team branches into a single architecture:
+Figure~\ref{fig:pipeline} contrasts the baseline dense pipeline with \texttt{final/combined-v2}, which integrates all four team workstreams into one coherent architecture:
 
 \begin{enumerate}[leftmargin=1.6em,itemsep=3pt]
-    \item \textbf{Single \texttt{custom\_vjp} Host Execution (\texttt{differometor/host.py}):} The entire simulation runs in NumPy/SciPy inside one \texttt{jax.custom\_vjp}, so XLA compiles only two tiny callback stubs (1.52\,s total trace/lower/compile, down from 22.92\,s).
-    \item \textbf{NumPy \texttt{jaxpr} Interpreter \& JVP Transposition:} Component and linking functions are never re-implemented by hand. Each function is traced once unbatched via \texttt{jax.jvp}, and the interpreter transposes only the linear tangent equations to obtain exact Wirtinger VJPs (verified against \texttt{jax.vjp} to $\le 2.7\times 10^{-16}$ across all 19 component functions). Every traced function is self-checked once at startup; if any function uses an unsupported primitive, \texttt{simulate} automatically falls back to the in-graph sparse JAX path.
-    \item \textbf{Grouped Component Assembly \& Narrow-Group Fix:} Matrix writes are grouped by component function at build time (eliminating \texttt{lax.switch} completely) and sweep-independent groups are hoisted. While combining branches, we also caught and fixed a bug in \texttt{\_assemble} and \texttt{\_assemble\_backward} where component groups with fewer than 7 inputs (such as carrier-side \texttt{space} with 3 inputs) crashed on frequency-swept setups like aLIGO; narrow groups are now zero-padded and their gradients sliced back.
-    \item \textbf{Block-Diagonal \texttt{\_superlu} \& Iterative Refinement:} Rather than calling \texttt{scipy.sparse.linalg.splu} 101 times, the host solver imports the compiled \texttt{\_superlu} C extension directly and factors all 101 frequencies together as one $75{,}851\times 75{,}851$ block-diagonal sparse matrix (COLAMD ordering, one \texttt{gstrf} call). Singular blocks trigger per-frequency fallback so \texttt{NaN}s stay local, and one step of fixed-precision sparse iterative refinement restores full accuracy on ill-conditioned topologies such as Voyager ($\kappa \sim 10^{31}$).
-    \item \textbf{In-Graph JAX Fallback (\texttt{DIFFEROMETOR\_BACKEND=jax}):} Setting \texttt{DIFFEROMETOR\_BACKEND=jax} routes execution to the in-graph sparse JAX implementation (\texttt{sparse\_solve.py} + \texttt{simulate.py} with Verdicts 1--5), restoring full JAX autodiff (\texttt{jacfwd}, \texttt{hessian}, and gradients with respect to non-\texttt{optimized\_parameters} inputs).
+    \item \textbf{Single \texttt{custom\_vjp} Host Execution \& Primal Caching (\texttt{differometor/host.py}):} The entire simulation runs in NumPy/C++ inside one \texttt{jax.custom\_vjp} (with primal environment and trace caching), eliminating XLA compilation of the matrix-assembly and reverse-mode graphs. Matrix writes are grouped by component function at build time (no \texttt{lax.switch}), sweep-independent groups are hoisted, and narrow component groups (e.g.\ carrier-side \texttt{space} with 3 inputs) are zero-padded and sliced cleanly.
+    \item \textbf{Native Wirtinger-Dual Component Kernels (\texttt{differometor/native\_kernels.py}):} Tracing 16 component functions via \texttt{jax.make\_jaxpr} and self-checking them at startup still cost $\sim$82\,ms of first-run \texttt{forward\_lower} time. \texttt{native\_kernels.py} replaces all 19 built-in component functions with closed-form NumPy kernels using a sparse Wirtinger dual number $y = f(x)$, $dy = \sum_i (A_i\,dx_i + B_i\,\overline{dx}_i)$ and exact VJP $\text{ct}(x_i) = \sum_k (A_{ki}\,\text{ct}(y_k) + \overline{B_{ki}\,\text{ct}(y_k)})$. On an Apple M2, this cut \texttt{forward\_lower} from 92.6\,ms to 10.5\,ms. Any user-modified or custom function automatically falls back to \texttt{jax.jvp} transposition (`DIFFEROMETOR\_KERNELS=0` forces tracing).
+    \item \textbf{Native C++ Batched Sparse LU with KLU-Style Pivot Reuse (\texttt{differometor/native/dfsparse.cpp}):} Compiled during \texttt{pip install -e .} and loaded via \texttt{ctypes} (`NativeBatchedLU`), \texttt{dfsparse.cpp} replaces SciPy's SuperLU on the host path:
+    \begin{itemize}[leftmargin=1.2em,itemsep=1pt]
+        \item \emph{Gilbert--Peierls left-looking LU:} Uses minimum-degree column ordering on $A + A^T$ computed once per sparsity pattern (avoiding $A^T A$ ordering, which loses accuracy on ill-conditioned topologies like Voyager).
+        \item \emph{KLU-style pivot reuse:} Frequency 0 is pivoted with partial pivoting (\texttt{PIVOT\_TOL = 1.0}); each subsequent frequency reuses the previous pivot order and $L/U$ pattern whenever every reused pivot satisfies $\ge 0.1\times$ the largest entry below it (\texttt{REUSE\_TOL = 0.1}), otherwise pivoting afresh. On \texttt{uifo\_800\_3000}, all 100 subsequent frequencies reuse the pattern.
+        \item \emph{Refinement \& fallback:} Every \texttt{N}/\texttt{T}/\texttt{H} solve applies 1 step of fixed-precision sparse iterative refinement (matching \texttt{RefinedLU} on ill-conditioned setups where $\kappa \sim 10^{31}$), singular blocks emit local \texttt{NaN}s, and \texttt{DIFFEROMETOR\_NATIVE=0} falls back to block-diagonal \texttt{\_superlu}.
+    \end{itemize}
+    \item \textbf{Host-Side Readout Detectors (\texttt{differometor/components.py}):} \texttt{signal\_detector} and \texttt{power\_detector} now execute in NumPy behind \texttt{jax.custom\_vjp} with hand-written adjoints, cutting sensitivity compilation and warm readout time (`0.250\,s` $\to$ `0.0002--0.0008\,s`).
+    \item \textbf{In-Graph JAX Fallback (\texttt{DIFFEROMETOR\_BACKEND=jax}):} Routes execution to the in-graph sparse JAX path (\texttt{sparse\_solve.py} + \texttt{simulate.py}), restoring full JAX autodiff (\texttt{jacfwd}, \texttt{hessian}, and gradients w.r.t.\ non-\texttt{optimized\_parameters} inputs).
 \end{enumerate}
 
 % ==============================================================================
@@ -192,47 +186,50 @@ Figure~\ref{fig:pipeline} contrasts the baseline dense pipeline with the \texttt
 \subsection{Correctness \& Cross-Topology Verification}
 
 \begin{enumerate}[leftmargin=1.6em,itemsep=2pt]
-    \item \textbf{Backend agreement (\texttt{tests/test\_backends.py}):} Verifies that the default host path agrees with the in-graph sparse JAX path (\texttt{DIFFEROMETOR\_BACKEND=jax}) in both forward values and reverse-mode gradients on frequency-swept \texttt{aligo}, \texttt{voyager}, and a swept Fabry--P\'erot cavity.
-    \item \textbf{JVP-transpose \& sparse solver unit checks:} \texttt{tests/check\_jvp\_transpose.py} matches \texttt{jax.vjp} to $\le 2.7\times 10^{-16}$ across all 19 component functions, and \texttt{python -m differometor.sparse\_solve} verifies all three sparse solve primitives against \texttt{jnp.linalg.solve} autodiff (forward $\max|\Delta| \le 1.34\times 10^{-15}$, gradient $\max|\Delta| \le 6.07\times 10^{-14}$).
-    \item \textbf{Cross-topology generality (\texttt{results/generality-e9.jsonl}):} Tested across 20 log-spaced frequencies (3\,Hz--3\,kHz) on aLIGO (3 modulation modes), Voyager (QHD, AM, FM), \texttt{uifo\_20\_5000}, and random $3\times 3$ UIFOs. On ill-conditioned cases where dense LAPACK loses accuracy, 50-digit reference checks confirm sparse iterative refinement is more accurate than dense: on random UIFO seed 1 ($2.2\times 10^{-10}$ vs.\ $1.1\times 10^{-3}$ dense log error) and Voyager AM ($2.2\times 10^{-6}$ vs.\ $1.8\times 10^{-4}$ dense).
-    \item \textbf{Full \texttt{uifo\_800\_3000} benchmark (\texttt{results/combined-final.json}):}
+    \item \textbf{Backend \& readout parity (\texttt{tests/test\_backends.py}, \texttt{tests/test\_host\_detectors.py}):} Verifies that the default host path and host detectors match the in-graph JAX path in forward values ($\le 10^{-14}$) and reverse-mode gradients ($\le 10^{-12}$) on \texttt{aligo}, \texttt{voyager}, and a swept Fabry--P\'erot cavity.
+    \item \textbf{Native kernel \& C++ solver verification (\texttt{tests/check\_native.py}, \texttt{tests/check\_native\_solver.py}):} All 19 Wirtinger-dual kernels match \texttt{jax.vjp} to $\le 10^{-10}$ (worst $6.9\times 10^{-15}$ on component parameters; `components.py` SHA-256 pinned), and \texttt{dfsparse.cpp} matches SuperLU and JAX across 12 topologies (aLIGO $\times 3$ modes, Voyager $\times 3$, UIFO fixtures, and 4 random UIFOs).
+    \item \textbf{50-digit reference checks (\texttt{results/generality-e9.jsonl}):} On ill-conditioned cases where dense LAPACK loses accuracy, sparse iterative refinement is more accurate than dense: random UIFO seed 1 ($2.2\times 10^{-10}$ vs.\ $1.1\times 10^{-3}$ dense log error) and Voyager AM ($2.2\times 10^{-6}$ vs.\ $1.8\times 10^{-4}$ dense).
+    \item \textbf{Full \texttt{uifo\_800\_3000} benchmark (\texttt{benchmark-v2.json} \& \texttt{results/amd-epyc/cpp\_cpu1.json}):}
     \begin{itemize}[leftmargin=1.2em,itemsep=1pt]
         \item \texttt{max\_absolute\_log\_sensitivity\_error}: $5.3743\times 10^{-6}$ (baseline: $5.3741\times 10^{-6}$; required $\le 10^{-5}$).
-        \item \texttt{mb11.tuning} gradient check: autodiff $7.61617\times 10^{-5}$ vs.\ central finite difference $7.61596\times 10^{-5}$ at $h=0.001$ (abs error $2.08\times 10^{-9}$) and $7.61576\times 10^{-5}$ at $h=0.0005$ (abs error $4.13\times 10^{-9}$, passed).
-        \item Gradient norm: $70517.1008$ (baseline: $70517.1068$), all outputs finite.
+        \item \texttt{mb11.tuning} gradient check (\texttt{benchmark-v2.json}): autodiff $7.61617\times 10^{-5}$ vs.\ central finite difference $7.61664\times 10^{-5}$ ($h=0.001$, err $4.73\times 10^{-9}$) and $7.61572\times 10^{-5}$ ($h=0.0005$, err $4.52\times 10^{-9}$, passed).
+        \item Numeric agreement vs.\ baseline on EPYC 9334 (\texttt{results/amd-epyc/comparison.txt}): $\max|\Delta\log S| = 6.717\times 10^{-8}$, gradient relative error $8.675\times 10^{-8}$, cosine similarity $1.0000000000$.
     \end{itemize}
 \end{enumerate}
 
-\subsection{Benchmark Timing Comparison \& Hardware Caveat}
+\subsection{Apples-to-Apples Benchmark Comparison (AMD EPYC 9334, 1 CPU)}
 
 \begin{figure}[t]
     \centering
     \includegraphics[width=\linewidth]{fig2_benchmark_comparison.pdf}
-    \caption{Benchmark comparison on \texttt{uifo\_800\_3000} (1 logical CPU). (a)~Median warm execution drops from 17.68\,s to 0.411\,s ($43.0\times$ speedup). (b)~First-run end-to-end drops from 44.20\,s to 3.97\,s ($11.1\times$ speedup), with XLA compilation cut from 22.92\,s to 1.52\,s. Best viewed in color.}
+    \caption{Benchmark comparison on \texttt{uifo\_800\_3000} (1 logical CPU). (a)~On AMD EPYC 9334 (\texttt{results/amd-epyc/}), median warm execution drops from 16.952\,s to 0.0969\,s ($174.9\times$ speedup). (b)~First-run end-to-end on EPYC 9334 drops from 35.829\,s to 0.895--0.964\,s ($37.2$--$40.0\times$ speedup). (c)~On i7-1355U WSL2, \texttt{final/combined-v2} (\texttt{benchmark-v2.json}) cuts first-run end-to-end from 3.97\,s to 3.18\,s ($-20\%$) and XLA compile from 1.52\,s to 0.87\,s ($-43\%$) vs.\ \texttt{final/combined}. Best viewed in color.}
     \label{fig:benchmarks}
 \end{figure}
 
-Figure~\ref{fig:benchmarks} and Table~\ref{tab:benchmarks} compare the baseline (\texttt{benchmarks/cpu-baseline.json}, Intel Xeon Platinum 8468, 1 CPU) against the \texttt{final/combined} implementation (\texttt{results/combined-final.json}, Intel Core i7-1355U WSL2, 1 CPU). \emph{Hardware caveat:} These two runs were measured on different CPUs, so single-thread IPC differences contribute alongside the algorithmic speedups; re-running both on the same judging Xeon machine gives the exact apples-to-apples ratio. \emph{Known limitations:} The default host path supports reverse-mode AD, \texttt{jit}, \texttt{vmap}, and \texttt{checkpoint}, but does not support forward-mode AD (\texttt{jacfwd}, \texttt{hessian}) or gradients w.r.t.\ inputs other than \texttt{optimized\_parameters}; set \texttt{DIFFEROMETOR\_BACKEND=jax} when those are needed.
+Figure~\ref{fig:benchmarks} and Table~\ref{tab:benchmarks} report apples-to-apples 1-CPU measurements on the same AMD EPYC 9334 machine (\texttt{results/amd-epyc/}). On the local i7-1355U WSL2 laptop (\texttt{benchmark-v2.json}), the combined v2 branch achieves \textbf{3.180\,s} first-run end-to-end and \textbf{0.865\,s} XLA compile (with warm samples reaching \textbf{0.127\,s} at the end of the 10-repeat run). \emph{Known limitations:} The default host path supports reverse-mode AD, \texttt{jit}, \texttt{vmap}, and \texttt{checkpoint}, but does not support forward-mode AD (\texttt{jacfwd}, \texttt{hessian}) or gradients w.r.t.\ inputs other than \texttt{optimized\_parameters}; set \texttt{DIFFEROMETOR\_BACKEND=jax} when those are needed.
 
 \begin{table}[h]
 \centering
 \small
-\begin{tabular}{@{}lrrr@{}}
+\begin{tabular}{@{}lrrrrr@{}}
 \toprule
-\textbf{Phase} & \textbf{Baseline (Xeon 8468)} & \textbf{Combined (i7-1355U)} & \textbf{Change} \\
+\textbf{Phase} & \textbf{Baseline} & \textbf{v1 Host} & \textbf{+ Native} & \textbf{+ Host} & \textbf{+ C++ LU} \\
+ & \textbf{(JAX Dense)} & \textbf{(SuperLU)} & \textbf{Kernels} & \textbf{Readout} & \textbf{(\texttt{dfsparse})} \\
 \midrule
-Imports \& Setup & 3.66\,s & 1.85\,s & $1.98\times$ \\
-XLA Trace / Lower / Compile & 22.92\,s & 1.52\,s & \textbf{15.1$\times$ faster} \\
+Imports \& Setup & 0.997\,s & 0.331\,s & 0.338\,s & 0.337\,s & 0.328\,s \\
+XLA Trace / Lower / Compile & 19.301\,s & 0.509\,s & 0.406\,s & 0.348\,s & 0.524\,s \\
 \midrule
-Warm Forward (median) & 13.144\,s & 0.264\,s & \textbf{49.9$\times$ faster} \\
-Warm Sensitivity (median) & 0.103\,s & 0.00064\,s & \textbf{159$\times$ faster} \\
-Warm Gradient (median) & 4.411\,s & 0.149\,s & \textbf{29.5$\times$ faster} \\
-\textbf{Warm Total (median)} & \textbf{17.679\,s} & \textbf{0.411\,s} & \textbf{43.0$\times$ faster} \\
+Warm Forward (median) & 13.360\,s & 0.115\,s & 0.097\,s & 0.111\,s & \textbf{0.0427\,s} \\
+Warm Sensitivity (median) & 0.250\,s & 0.0002\,s & 0.0002\,s & 0.0008\,s & \textbf{0.0002\,s} \\
+Warm Gradient (median) & 3.010\,s & 0.045\,s & 0.050\,s & 0.059\,s & \textbf{0.0503\,s} \\
+\textbf{Warm Total (median)} & \textbf{16.952\,s} & \textbf{0.160\,s} & \textbf{0.147\,s} & \textbf{0.173\,s} & \textbf{0.0969\,s} \\
+\textbf{Warm Speedup} & 1.0$\times$ & 105.8$\times$ & 115.2$\times$ & 98.1$\times$ & \textbf{174.9$\times$} \\
 \midrule
-\textbf{First-Run End-to-End} & \textbf{44.204\,s} & \textbf{3.973\,s} & \textbf{11.1$\times$ faster} \\
+\textbf{First-Run End-to-End} & \textbf{35.829\,s} & \textbf{1.038\,s} & \textbf{0.941\,s} & \textbf{0.895\,s} & \textbf{0.964\,s} \\
+\textbf{First-Run Speedup} & 1.0$\times$ & 34.5$\times$ & 38.1$\times$ & \textbf{40.0$\times$} & 37.2$\times$ \\
 \bottomrule
 \end{tabular}
-\caption{Phase-by-phase timing comparison on \texttt{uifo\_800\_3000} (1 logical CPU).}
+\caption{Apples-to-apples phase timing on \texttt{uifo\_800\_3000} (AMD EPYC 9334, 1 logical CPU, \texttt{results/amd-epyc/}).}
 \label{tab:benchmarks}
 \end{table}
 
@@ -244,12 +241,12 @@ Warm Gradient (median) & 4.411\,s & 0.149\,s & \textbf{29.5$\times$ faster} \\
 \begin{center}
 \small
 \fbox{\parbox{0.96\linewidth}{\centering
-\textbf{1. Host \texttt{custom\_vjp} + JVP Transpose} (1.52\,s XLA) $\longrightarrow$
+\textbf{1. Host \texttt{custom\_vjp} + 19 Wirtinger Kernels} (0.35--0.52\,s XLA) $\longrightarrow$
 \textbf{2. Grouped Sparse COO} (2,537 vs.\ 564k) $\longrightarrow$
-\textbf{3. Block-Diag \texttt{\_superlu}} (1 call for 101 freqs) $\longrightarrow$
+\textbf{3. C++ Batched LU (\texttt{dfsparse})} (KLU pivot reuse) $\longrightarrow$
 \textbf{4. MISO Quadratic + Hoisted $N$} ($w^H N w$ at 272 nnz) $\longrightarrow$
-\textbf{5. Sparse VJP + Refinement} ($\le 10^{-14}$ accuracy) $\longrightarrow$
-\textbf{6. 0.411\,s Warm / 3.97\,s First-Run}
+\textbf{5. Sparse VJP + Host Readout} ($\le 10^{-8}$ vs.\ dense) $\longrightarrow$
+\textbf{6. 0.097\,s Warm / 0.90--0.96\,s First-Run}
 }}
 \end{center}
 
@@ -261,13 +258,12 @@ Warm Gradient (median) & 4.411\,s & 0.149\,s & \textbf{29.5$\times$ faster} \\
 \textbf{Term} & \textbf{Plain Meaning} \\
 \midrule
 Carrier / Signal / Noise & Steady laser light ($286\times 286$), audio-band ripples ($751\times 751$), and quantum fluctuations ($751\times 751$). \\
-Sparsity (0.48\% nnz) & Only $\sim$2,700 of 564,001 matrix entries are nonzero; the rest are blank zeros. \\
-\texttt{splu} (SuperLU) & SciPy's C sparse LU solver that factors a matrix once and solves $A$, $A^T$, and $A^H$. \\
+Sparsity (0.45\% nnz) & Only 2,537 of 564,001 signal matrix entries are nonzero; the rest are blank zeros. \\
+\texttt{dfsparse.cpp} & Native C++ Gilbert--Peierls sparse LU with $A+A^T$ min-degree ordering, KLU pivot reuse, and refinement. \\
 MISO Adjoint Identity & Rewriting $c^H A^{-1} N A^{-\dagger} c$ as $w^H N w$ ($w = A^{-\dagger} c$) to delete a redundant solve. \\
 Sparse VJP ($-\lambda_r x_c$) & Computing reverse-mode matrix gradients only at nonzero coordinates, not densely. \\
-\texttt{lax.switch} Slimming & Restricting each system to its 4 or 15 used component functions instead of all 19 (or grouping by function on the host). \\
-Host \texttt{custom\_vjp} & Running the simulation in NumPy/SciPy inside one JAX callback so XLA compiles only two stubs (1.52\,s). \\
-Block-Diag \texttt{\_superlu} & Factoring all 101 frequencies together as one $75{,}851\times 75{,}851$ sparse system via direct C binding. \\
+Wirtinger Kernels & Closed-form NumPy component kernels (\texttt{native\_kernels.py}) tracking holomorphic/anti-holomorphic duals. \\
+Host Readout & Running \texttt{signal\_detector} and \texttt{power\_detector} in NumPy behind \texttt{custom\_vjp}. \\
 \bottomrule
 \end{tabular}
 \caption{Plain-language glossary of key concepts.}

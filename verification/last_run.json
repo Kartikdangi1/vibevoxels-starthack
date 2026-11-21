@@ -1,0 +1,46 @@
+{
+  "quick": false,
+  "passed": false,
+  "stages": [
+    {
+      "stage": "analytic",
+      "passed": true,
+      "seconds": 29.2
+    },
+    {
+      "stage": "vs_dense",
+      "passed": true,
+      "seconds": 1096.1
+    },
+    {
+      "stage": "invariants",
+      "passed": true,
+      "seconds": 92.8
+    },
+    {
+      "stage": "gradients",
+      "passed": false,
+      "seconds": 29.3
+    },
+    {
+      "stage": "reference",
+      "passed": true,
+      "seconds": 31.5
+    },
+    {
+      "stage": "generalization",
+      "passed": false,
+      "seconds": 3505.3
+    },
+    {
+      "stage": "scaling",
+      "passed": true,
+      "seconds": 125.9
+    },
+    {
+      "stage": "pytest",
+      "passed": true,
+      "seconds": 170.7
+    }
+  ]
+}
