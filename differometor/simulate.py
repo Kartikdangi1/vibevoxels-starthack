@@ -18,6 +18,7 @@ Conventions used throughout:
 """
 
 import os
+import numpy as np
 import jax
 from time import time
 import jax.numpy as jnp
@@ -25,8 +26,11 @@ from jax import lax, vmap, jit
 
 from differometor.setups import Setup
 from differometor.build import build, pairs_to_arrays, prepare_arrays, LINKING_FUNCTIONS
-from differometor.components import FUNCTIONS, UNIT_VACUUM, H_PLANCK, F0
-from differometor.sparse_solve import sparse_solve
+from differometor.components import (
+    FUNCTIONS, UNIT_VACUUM, H_PLANCK, F0,
+    laser, surface, space, space_lower, dummy_function, vacuum_quantum_noise, loss_quantum_noise, squeezer,
+)
+from differometor.sparse_solve import sparse_solve, sparse_system_solve, sparse_system_transpose_solve
 
 
 jax.config.update("jax_enable_x64", True)
@@ -63,13 +67,48 @@ def _dense_solve(matrix: jnp.ndarray, right_hand_side: jnp.ndarray) -> jnp.ndarr
 
 
 # The signal/noise system matrices built by `differometor.build` are extremely sparse (measured
-# on the official uifo_800_3000 fixture: 751x751, ~0.47% nonzero, ~3.6 nonzeros/row - an optical
-# component graph, not a dense system), yet the dense LU path above does full O(N^3) work on them.
-# `sparse_solve` is a verified drop-in (same values and gradients, see
-# differometor/sparse_solve.py's `_self_check`) backed by a sparse direct solve instead; measured
-# ~230x faster on a representative 751x751/101-batch case. Set DIFFEROMETOR_SOLVER=dense to fall
-# back to the original dense path (e.g. to re-confirm a discrepancy is/isn't solver-related).
-solve = _dense_solve if os.environ.get("DIFFEROMETOR_SOLVER") == "dense" else sparse_solve
+# on the official uifo_800_3000 fixture: 751x751, ~0.4% nonzero), yet a dense LU does full O(N^3)
+# work on them. By default the carrier is solved by `sparse_solve` and the signal / quantum-noise
+# systems by the entry-based sparse solvers in `differometor.sparse_solve` (one shared sparse LU per
+# frequency, values-only assembly and VJPs, see docs/notes/eidothea_literature_verdicts.md).
+# Set DIFFEROMETOR_SOLVER=dense to run the original dense assembly + `jnp.linalg.solve` path instead
+# (e.g. to re-confirm a discrepancy is/isn't solver-related); it is memory hungry at 101 frequencies.
+_DENSE = os.environ.get("DIFFEROMETOR_SOLVER") == "dense"
+solve = _dense_solve if _DENSE else sparse_solve
+
+
+# Verdict 5: `vmap(lax.switch(i, FUNCTIONS, x))` over a batched index lowers to "evaluate every branch
+# on every row, then select", and JAX differentiates all of those branches again. That is what makes
+# XLA compile times explode (tens of seconds on one CPU). `differometor.build` only ever assigns a
+# small, fixed set of component functions to each of the three systems, so each call site dispatches
+# over just its own branches (indices are remapped to positions in that branch list).
+_CARRIER_FUNCTIONS = (laser, surface, space, dummy_function)
+_NOISE_FUNCTIONS = (vacuum_quantum_noise, loss_quantum_noise, squeezer, dummy_function)
+_SIGNAL_FUNCTIONS = tuple(f for f in FUNCTIONS if f not in (laser, vacuum_quantum_noise, loss_quantum_noise, squeezer))
+# DIFFEROMETOR_DISPATCH=full restores the 19-way switch at every call site (original behaviour).
+_FULL_DISPATCH = os.environ.get("DIFFEROMETOR_DISPATCH") == "full"
+
+
+def _dispatcher(branches: tuple) -> tuple:
+    """(branch list, global-function-index -> branch position table) for one call site."""
+    if _FULL_DISPATCH:
+        return tuple(FUNCTIONS), np.arange(len(FUNCTIONS))
+    table = np.zeros(len(FUNCTIONS), dtype=np.int32)
+    for position, function in enumerate(branches):
+        table[FUNCTIONS.index(function)] = position
+    return tuple(branches), table
+
+
+_CARRIER_DISPATCH = _dispatcher(_CARRIER_FUNCTIONS)
+_NOISE_DISPATCH = _dispatcher(_NOISE_FUNCTIONS)
+_SIGNAL_DISPATCH = _dispatcher(_SIGNAL_FUNCTIONS)
+
+
+def _evaluate(dispatch: tuple, function_indices: jnp.ndarray, function_inputs: jnp.ndarray) -> jnp.ndarray:
+    """Evaluate component function `function_indices[k]` on `function_inputs[k]`; rows (K, 4)."""
+    branches, table = dispatch
+    local = jnp.asarray(table)[function_indices]
+    return vmap(lambda i, x: lax.switch(i, branches, x))(local, function_inputs)
 
 
 def update(
@@ -79,6 +118,7 @@ def update(
     output_indices: tuple[jnp.ndarray, jnp.ndarray],
     matrix_indices: tuple[jnp.ndarray, jnp.ndarray],
     function_indices: jnp.ndarray,
+    dispatch: tuple | None = None,
 ) -> jnp.ndarray:
     """
     Update selected entries of a system matrix by evaluating component functions.
@@ -119,9 +159,34 @@ def update(
     tracing, which keeps the function jittable as long as the list is stable.
     """
     function_inputs = parameters[function_input_indices]
-    output_matrix = vmap(lambda i, x: lax.switch(i, FUNCTIONS, x))(function_indices, function_inputs)
+    output_matrix = _evaluate(dispatch or (tuple(FUNCTIONS), np.arange(len(FUNCTIONS))), function_indices, function_inputs)
     outputs = output_matrix[output_indices[0], output_indices[1]]
     return matrix.at[matrix_indices[0], matrix_indices[1]].set(outputs)
+
+
+def update_values(
+    parameters: jnp.ndarray,
+    function_input_indices: jnp.ndarray,
+    output_indices: tuple[jnp.ndarray, jnp.ndarray],
+    function_indices: jnp.ndarray,
+    dispatch: tuple | None = None,
+) -> jnp.ndarray:
+    """
+    Like `update`, but returns only the evaluated matrix entries, shape (M,), without scattering
+    them into a dense matrix. Entry m belongs at position `matrix_indices[:, m]`.
+    """
+    function_inputs = parameters[function_input_indices]
+    output_matrix = _evaluate(dispatch or (tuple(FUNCTIONS), np.arange(len(FUNCTIONS))), function_indices, function_inputs)
+    return output_matrix[output_indices[0], output_indices[1]]
+
+
+def _last_wins(linear_positions: jnp.ndarray) -> jnp.ndarray:
+    """Boolean mask over entries: True where no later entry targets the same position, i.e. the
+    entries that survive `.at[].set` (last write wins)."""
+    order = jnp.argsort(linear_positions, stable=True)
+    sorted_positions = linear_positions[order]
+    is_last = jnp.concatenate([sorted_positions[1:] != sorted_positions[:-1], jnp.array([True])])
+    return jnp.zeros(linear_positions.shape, dtype=bool).at[order].set(is_last)
 
 
 def expand_parameters(array: jnp.ndarray, indices: jnp.ndarray, values: jnp.ndarray) -> jnp.ndarray:
@@ -160,6 +225,186 @@ def expand_parameters(array: jnp.ndarray, indices: jnp.ndarray, values: jnp.ndar
     column_indices = jnp.tile(indices, values.shape[1])
     flat_values = values.T.flatten()
     return tiled_array.at[row_indices, column_indices].set(flat_values)
+
+
+def _carrier_selections(noise_selection_vectors, qhd_placing_indices, qhd_phase_values, carrier):
+    """Detector selection vectors with QHD phases and carrier amplitudes applied, shape (D, SV, SN)."""
+    # `lax.scatter_mul` is used (rather than `.at[...].set`) so empty index arrays
+    # remain valid without conditionals.
+    noise_selection_vectors = lax.scatter_mul(
+        noise_selection_vectors,
+        qhd_placing_indices.reshape(-1, 3),
+        qhd_phase_values,
+        lax.ScatterDimensionNumbers(
+            update_window_dims=(),
+            inserted_window_dims=(0, 1, 2),
+            scatter_dims_to_operand_dims=(0, 1, 2),
+        ),
+        unique_indices=True,
+    )
+
+    # Broadcast selection vectors across the carrier sweep dimension.
+    noise_selection_vectors = jnp.tile(noise_selection_vectors, (1, carrier.shape[0], 1))
+
+    # Select necessary carrier entries and build upper and lower sideband selections.
+    upper_carrier_selections = noise_selection_vectors[:, :, : carrier.shape[1]] * carrier
+    upper_carrier_selections = noise_selection_vectors.at[:, :, : carrier.shape[1]].set(upper_carrier_selections)
+
+    lower_carrier_selections = jnp.conjugate(
+        upper_carrier_selections[:, :, carrier.shape[1] : carrier.shape[1] * 2] * carrier
+    )
+    return upper_carrier_selections.at[:, :, carrier.shape[1] : carrier.shape[1] * 2].set(lower_carrier_selections)
+
+
+def _noise_density(quadratic: jnp.ndarray) -> jnp.ndarray:
+    """Convert the detector quantum-noise quadratic form (D, SV) into amplitude spectral density."""
+    return jnp.sqrt(2 * quadratic * UNIT_VACUUM * H_PLANCK * F0 * 0.25)
+
+
+def _sideband_conjugation_mask(rows, cols, carrier_size):
+    """Entries inside the lower-sideband blocks that must be conjugated (upper/lower sideband symmetry)."""
+    c = carrier_size
+    mid_row = (rows >= c) & (rows < 2 * c)
+    mid_col = (cols >= c) & (cols < 2 * c)
+    return (mid_row & mid_col) | ((rows >= 2 * c) & (cols < c)) | (mid_row & (cols >= 2 * c))
+
+
+def _signal_and_noise_sparse(
+    parameters, carrier, signal_matrix, noise_selection_vectors, qhd_placing_indices, qhd_phase_values,
+    signal_function_input_indices, signal_function_indices, signal_output_indices, signal_matrix_indices,
+    signal_carrier_indices, signal_carrier_placing_indices,
+    noise_function_input_indices, noise_function_indices, noise_output_indices, noise_system_matrix_indices,
+):
+    """
+    Signal system and quantum noise without ever building a dense (SV, SN, SN) matrix.
+
+    Verdict 3: the signal matrix is the static `signal_matrix` base plus a COO list of per-frequency
+    entries (component outputs, carrier-scaled connector entries); the sparse solvers take exactly
+    that. Verdict 2: signal solve, noise solve and both reverse-mode solves share one sparse LU per
+    frequency. Verdict 1: the detector quantum noise is the quadratic form w^H N w with
+    A^H w = c, because c^H A^{-1} N w = (A^{-H} c)^H N w; the second solve of the old code is gone.
+    Verdict 4: the noise source matrix N does not depend on the signal frequency, so it is evaluated
+    once and contracted sparsely on its handful of nonzero entries.
+    """
+    n = signal_matrix.shape[0]
+    carrier_size = carrier.shape[1]
+
+    # Per-frequency matrix entries from the component functions: (SV, M).
+    vals = vmap(update_values, in_axes=(0, None, None, None, None))(
+        parameters, signal_function_input_indices, signal_output_indices, signal_function_indices,
+        _SIGNAL_DISPATCH,
+    )
+    rows = signal_matrix_indices[0]
+    cols = jnp.where(signal_matrix_indices[1] < 0, signal_matrix_indices[1] + n + 1, signal_matrix_indices[1])
+
+    # Scale signal connector entries by the carrier solution at the respective spaces.
+    # The minus sign matches the sign convention used by the referenced modeling tools.
+    placing_rows = signal_carrier_placing_indices[0]
+    placing_cols = jnp.where(
+        signal_carrier_placing_indices[1] < 0, signal_carrier_placing_indices[1] + n + 1, signal_carrier_placing_indices[1]
+    )
+    entry_positions = rows * (n + 1) + cols
+    order = jnp.argsort(entry_positions, stable=True)
+    sorted_positions = entry_positions[order]
+    wanted = placing_rows * (n + 1) + placing_cols
+    found_at = jnp.clip(jnp.searchsorted(sorted_positions, wanted, side="right") - 1, 0, sorted_positions.shape[0] - 1)
+    found = sorted_positions[found_at] == wanted
+    current = jnp.where(found[None, :], vals[:, order[found_at]], signal_matrix[placing_rows, placing_cols][None, :])
+    scaled = -current * carrier[:, signal_carrier_indices.flatten()]
+
+    rows = jnp.concatenate([rows, placing_rows])
+    cols = jnp.concatenate([cols, placing_cols])
+    vals = jnp.concatenate([vals, scaled], axis=1)
+
+    # Apply conjugation rules to enforce upper and lower sideband symmetry (base and entries).
+    vals = jnp.where(_sideband_conjugation_mask(rows, cols, carrier_size)[None, :], jnp.conjugate(vals), vals)
+    base = signal_matrix
+    base = base.at[carrier_size : carrier_size * 2, carrier_size : carrier_size * 2].set(
+        jnp.conjugate(base[carrier_size : carrier_size * 2, carrier_size : carrier_size * 2])
+    )
+    base = base.at[carrier_size * 2 :, :carrier_size].set(jnp.conjugate(base[carrier_size * 2 :, :carrier_size]))
+    base = base.at[carrier_size : carrier_size * 2, carrier_size * 2 :].set(
+        jnp.conjugate(base[carrier_size : carrier_size * 2, carrier_size * 2 :])
+    )
+
+    signal = sparse_system_solve(base, rows, cols, vals)
+
+    # Back-propagate detector weights: w = A^{-H} c = conj(A^{-T} conj(c)) with A^T from the same LU.
+    carrier_selections = _carrier_selections(noise_selection_vectors, qhd_placing_indices, qhd_phase_values, carrier)
+    carrier_selections = jnp.broadcast_to(
+        carrier_selections, (carrier_selections.shape[0], vals.shape[0], carrier_selections.shape[2])
+    )
+    weights = jnp.conjugate(
+        sparse_system_transpose_solve(base, rows, cols, vals, jnp.conjugate(carrier_selections))
+    )
+
+    # Noise source matrix N: frequency independent (none of the noise functions read the swept
+    # frequency), so evaluate it once; sum Re(conj(w_r) N_rc w_c) over its nonzero entries only.
+    noise_values = update_values(
+        parameters[0], noise_function_input_indices, noise_output_indices, noise_function_indices, _NOISE_DISPATCH
+    )
+    noise_rows, noise_cols = noise_system_matrix_indices
+    noise_values = jnp.where(_last_wins(noise_rows * n + noise_cols), noise_values, 0)
+    quadratic = jnp.sum(
+        jnp.real(jnp.conjugate(weights[:, :, noise_rows]) * noise_values * weights[:, :, noise_cols]), axis=2
+    )
+    return signal, _noise_density(quadratic)
+
+
+def _signal_and_noise_dense(
+    parameters, carrier, signal_matrix, noise_matrix, noise_selection_vectors, qhd_placing_indices,
+    qhd_phase_values, signal_function_input_indices, signal_function_indices, signal_output_indices,
+    signal_matrix_indices, signal_carrier_indices, signal_carrier_placing_indices,
+    noise_function_input_indices, noise_function_indices, noise_output_indices, noise_system_matrix_indices,
+):
+    """Original dense implementation (DIFFEROMETOR_SOLVER=dense): reference for the sparse path."""
+    signal_matrix = vmap(update, in_axes=(0, None, None, None, None, None, None))(
+        parameters,
+        signal_matrix,
+        signal_function_input_indices,
+        signal_output_indices,
+        signal_matrix_indices,
+        signal_function_indices,
+        _SIGNAL_DISPATCH,
+    )
+    signal_entries = (
+        -signal_matrix[:, signal_carrier_placing_indices[0], signal_carrier_placing_indices[1]]
+        * carrier[:, signal_carrier_indices.flatten()]
+    )
+    signal_matrix = signal_matrix.at[:, signal_carrier_placing_indices[0], signal_carrier_placing_indices[1]].set(
+        signal_entries
+    )
+    carrier_size = carrier.shape[1]
+    signal_matrix = signal_matrix.at[:, carrier_size : carrier_size * 2, carrier_size : carrier_size * 2].set(
+        jnp.conjugate(signal_matrix[:, carrier_size : carrier_size * 2, carrier_size : carrier_size * 2])
+    )
+    signal_matrix = signal_matrix.at[:, carrier_size * 2 :, :carrier_size].set(
+        jnp.conjugate(signal_matrix[:, carrier_size * 2 :, :carrier_size])
+    )
+    signal_matrix = signal_matrix.at[:, carrier_size : carrier_size * 2, carrier_size * 2 :].set(
+        jnp.conjugate(signal_matrix[:, carrier_size : carrier_size * 2, carrier_size * 2 :])
+    )
+    signal = vmap(solve)(signal_matrix[:, :, :-1], signal_matrix[:, :, -1])
+
+    carrier_selections = _carrier_selections(noise_selection_vectors, qhd_placing_indices, qhd_phase_values, carrier)
+    carrier_selections = jnp.broadcast_to(
+        carrier_selections, (carrier_selections.shape[0], signal_matrix.shape[0], carrier_selections.shape[2])
+    )
+    transposed_conjugated_signal_matrix = jnp.transpose(jnp.conjugate(signal_matrix[:, :, :-1]), (0, 2, 1))
+    noise_weights = vmap(vmap(solve), in_axes=(None, 0))(transposed_conjugated_signal_matrix, carrier_selections)
+    noise_matrix = vmap(update, in_axes=(0, None, None, None, None, None, None))(
+        parameters,
+        noise_matrix,
+        noise_function_input_indices,
+        noise_output_indices,
+        noise_system_matrix_indices,
+        noise_function_indices,
+        _NOISE_DISPATCH,
+    )
+    noise_sources = vmap(lambda m, w: jnp.einsum("bij,bj->bi", m, w), in_axes=(None, 0))(noise_matrix, noise_weights)
+    covariances = vmap(vmap(solve), in_axes=(None, 0))(signal_matrix[:, :, :-1], noise_sources)
+    temporary_sum = jnp.sum(jnp.real(covariances * jnp.conjugate(carrier_selections)), axis=2)
+    return signal, _noise_density(temporary_sum)
 
 
 def simulate(
@@ -300,128 +545,39 @@ def simulate(
     # Carrier solve
     # --------------------
     parameters = expand_parameters(parameters, carrier_changing_parameter_indices, carrier_changing_values)
-    carrier_matrix = vmap(update, in_axes=(0, None, None, None, None, None))(
+    carrier_matrix = vmap(update, in_axes=(0, None, None, None, None, None, None))(
         parameters,
         carrier_matrix,
         carrier_function_input_indices,
         carrier_output_indices,
         carrier_matrix_indices,
         carrier_function_indices,
+        _CARRIER_DISPATCH,
     )
     carrier = vmap(solve)(carrier_matrix[:, :, :-1], carrier_matrix[:, :, -1])
 
     # --------------------
-    # Signal solve
+    # Signal solve + quantum noise
     # --------------------
     parameters = expand_parameters(parameters, signal_changing_parameter_indices, signal_changing_values)
-    signal_matrix = vmap(update, in_axes=(0, None, None, None, None, None))(
-        parameters,
-        signal_matrix,
-        signal_function_input_indices,
-        signal_output_indices,
-        signal_matrix_indices,
-        signal_function_indices,
-    )
-
-    # Scale signal connector entries by the carrier solution at the respective spaces.
-    # The minus sign matches the sign convention used by the referenced modeling tools.
-    signal_entries = (
-        -signal_matrix[:, signal_carrier_placing_indices[0], signal_carrier_placing_indices[1]]
-        * carrier[:, signal_carrier_indices.flatten()]
-    )
-    signal_matrix = signal_matrix.at[:, signal_carrier_placing_indices[0], signal_carrier_placing_indices[1]].set(
-        signal_entries
-    )
-
-    # Apply conjugation rules to enforce upper and lower sideband symmetry.
-    carrier_size = carrier.shape[1]
-    signal_matrix = signal_matrix.at[:, carrier_size : carrier_size * 2, carrier_size : carrier_size * 2].set(
-        jnp.conjugate(signal_matrix[:, carrier_size : carrier_size * 2, carrier_size : carrier_size * 2])
-    )
-    signal_matrix = signal_matrix.at[:, carrier_size * 2 :, :carrier_size].set(
-        jnp.conjugate(signal_matrix[:, carrier_size * 2 :, :carrier_size])
-    )
-    signal_matrix = signal_matrix.at[:, carrier_size : carrier_size * 2, carrier_size * 2 :].set(
-        jnp.conjugate(signal_matrix[:, carrier_size : carrier_size * 2, carrier_size * 2 :])
-    )
-
-    signal = vmap(solve)(signal_matrix[:, :, :-1], signal_matrix[:, :, -1])
-
-    # --------------------
-    # Quantum noise solve
-    # --------------------
-    # Apply quadrature-homodyne-detector phases into the selection vectors.
-    # `lax.scatter_mul` is used (rather than `.at[...].set`) so empty index arrays
-    # remain valid without conditionals.
-    noise_selection_vectors = lax.scatter_mul(
-        noise_selection_vectors,
-        qhd_placing_indices.reshape(-1, 3),
-        qhd_phase_values,
-        lax.ScatterDimensionNumbers(
-            update_window_dims=(),
-            inserted_window_dims=(0, 1, 2),
-            scatter_dims_to_operand_dims=(0, 1, 2),
-        ),
-        unique_indices=True,
-    )
-
-    # Broadcast selection vectors across the carrier sweep dimension.
-    noise_selection_vectors = jnp.tile(noise_selection_vectors, (1, carrier.shape[0], 1))
-
-    # Select necessary carrier entries and build upper and lower sideband selections.
-    upper_carrier_selections = noise_selection_vectors[:, :, : carrier.shape[1]] * carrier
-    upper_carrier_selections = noise_selection_vectors.at[:, :, : carrier.shape[1]].set(upper_carrier_selections)
-
-    lower_carrier_selections = jnp.conjugate(
-        upper_carrier_selections[:, :, carrier.shape[1] : carrier.shape[1] * 2] * carrier
-    )
-    carrier_selections = upper_carrier_selections.at[
-        :, :, carrier.shape[1] : carrier.shape[1] * 2
-    ].set(lower_carrier_selections)
-
-    # Back-propagate detector weights by solving the transposed conjugated signal system.
-    transposed_conjugated_signal_matrix = jnp.transpose(jnp.conjugate(signal_matrix[:, :, :-1]), (0, 2, 1))
-    carrier_selections = jnp.broadcast_to(
-        carrier_selections,
-        (carrier_selections.shape[0], transposed_conjugated_signal_matrix.shape[0], carrier_selections.shape[2]),
-    )
-    noise_weights = vmap(vmap(solve), in_axes=(None, 0))(transposed_conjugated_signal_matrix, carrier_selections)
-
-    # Update noise source matrix (may depend on current parameters).
-    noise_matrix = vmap(update, in_axes=(0, None, None, None, None, None))(
-        parameters,
-        noise_matrix,
-        noise_function_input_indices,
-        noise_output_indices,
-        noise_system_matrix_indices,
-        noise_function_indices,
-    )
-
-    def matmul_single_batch(matrix_batch: jnp.ndarray, vector_batch: jnp.ndarray) -> jnp.ndarray:
-        """
-        Multiply a batch of matrices with a batch of vectors.
-
-        Parameters
-        ----------
-        matrix_batch : jnp.ndarray
-            Shape (B, N, N).
-        vector_batch : jnp.ndarray
-            Shape (B, N).
-
-        Returns
-        -------
-        product : jnp.ndarray
-            Shape (B, N).
-        """
-        return jnp.einsum("bij,bj->bi", matrix_batch, vector_batch)
-
-    # Project noise sources into the system and propagate through the signal matrix.
-    noise_sources = vmap(matmul_single_batch, in_axes=(None, 0))(noise_matrix, noise_weights)
-    covariances = vmap(vmap(solve), in_axes=(None, 0))(signal_matrix[:, :, :-1], noise_sources)
-
-    # Convert propagated covariances into amplitude spectral density.
-    temporary_sum = jnp.sum(jnp.real(covariances * jnp.conjugate(carrier_selections)), axis=2)
-    noise = jnp.sqrt(2 * temporary_sum * UNIT_VACUUM * H_PLANCK * F0 * 0.25)
+    if _DENSE:
+        signal, noise = _signal_and_noise_dense(
+            parameters, carrier, signal_matrix, noise_matrix, noise_selection_vectors, qhd_placing_indices,
+            qhd_phase_values, signal_function_input_indices, signal_function_indices, signal_output_indices,
+            signal_matrix_indices, signal_carrier_indices, signal_carrier_placing_indices,
+            noise_function_input_indices, noise_function_indices, noise_output_indices,
+            noise_system_matrix_indices,
+        )
+    else:
+        # The noise source matrix is assumed to start out empty (as `build` always creates it): all
+        # its nonzeros are written by the noise component functions.
+        signal, noise = _signal_and_noise_sparse(
+            parameters, carrier, signal_matrix, noise_selection_vectors, qhd_placing_indices,
+            qhd_phase_values, signal_function_input_indices, signal_function_indices, signal_output_indices,
+            signal_matrix_indices, signal_carrier_indices, signal_carrier_placing_indices,
+            noise_function_input_indices, noise_function_indices, noise_output_indices,
+            noise_system_matrix_indices,
+        )
 
     return carrier.T, signal.T, noise.squeeze()
 
