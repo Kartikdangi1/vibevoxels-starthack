@@ -1,0 +1,6 @@
+# Keep shell scripts and Docker files LF-only regardless of the checkout OS's autocrlf setting,
+# otherwise a Windows checkout can give container.bash a CRLF shebang line that fails on macOS/Linux.
+*.bash text eol=lf
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.py text eol=lf
