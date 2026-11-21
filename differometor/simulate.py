@@ -511,7 +511,7 @@ def compress_arrays(arrays):
     out.update(
         carrier_values=jnp.asarray(v.astype(np.complex128)), carrier_rows=jnp.asarray(r[:na]),
         carrier_cols=jnp.asarray(c[:na]), carrier_rhs_rows=jnp.asarray(r[na:]),
-        carrier_size_marker=jnp.zeros(cn, jnp.int8),
+        carrier_size_marker=jnp.asarray(np.zeros(cn, np.int8)),
         carrier_groups=_group_functions(a["carrier_function_input_indices"], a["carrier_function_indices"],
                                         a["carrier_output_indices"], ks[0], swept),
     )
@@ -544,7 +544,7 @@ def compress_arrays(arrays):
             "signal_changing_parameter_indices", "signal_changing_values", "parameters",
             "noise_selection_vectors", "qhd_parameter_indices", "qhd_placing_indices",
             "linked_indices", "linking_function_indices", "indices_to_link", "signal_carrier_indices")
-    return {**{key: a[key] for key in keep}, **out}
+    return {**{key: (None if a[key] is None else jnp.asarray(a[key])) for key in keep}, **out}
 
 
 # ---------------------------------------------------------------- host solver

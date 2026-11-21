@@ -34,8 +34,23 @@ to match phase conventions and signs.
 
 from __future__ import annotations
 
+import jax
 import jax.numpy as jnp
 import numpy as np
+
+
+def _xp(*values):
+    """NumPy for concrete build-time scalars, jax.numpy for traced/JAX values.
+
+    The scalar optics helpers below are called both inside traced component
+    functions and eagerly by the builder. Evaluating the eager calls with NumPy
+    avoids compiling dozens of tiny XLA kernels during setup; traced calls are
+    unchanged.
+    """
+    for value in values:
+        if isinstance(value, jax.Array) or isinstance(value, jax.core.Tracer):
+            return jnp
+    return np
 
 
 # -----------------------------------------------------------------------------
@@ -1148,7 +1163,8 @@ def incidence_angle_left(alpha: float) -> jnp.ndarray:
     beamsplitter workspace convention in:
     finesse > components > modal > beamsplitter.pyx > BeamsplitterWorkspace
     """
-    return jnp.cos(jnp.radians(alpha))
+    xp = _xp(alpha)
+    return xp.cos(xp.radians(alpha))
 
 
 def incidence_angle_right(alpha: float, refractive_index_left: float, refractive_index_right: float) -> jnp.ndarray:
@@ -1180,8 +1196,9 @@ def incidence_angle_right(alpha: float, refractive_index_left: float, refractive
     Related documentation:
     https://finesse.ifosim.org/docs/latest/physics/plane-waves/beam_splitter.html#beamsplitter-phase
     """
-    return jnp.cos(
-        jnp.arcsin(refractive_index_left / refractive_index_right * jnp.sin(jnp.radians(alpha)))
+    xp = _xp(alpha, refractive_index_left, refractive_index_right)
+    return xp.cos(
+        xp.arcsin(refractive_index_left / refractive_index_right * xp.sin(xp.radians(alpha)))
     )
 
 
@@ -1212,7 +1229,8 @@ def phase_shift(tuning: float, frequency: float, refractive_index: float) -> jnp
     - finesse > components > modal > mirror.pyx > mirror_fill_optical_2_optical
     - finesse > components > modal > beamsplitter.pyx > beamsplitter_fill_optical_2_optical
     """
-    return 2 * jnp.radians(tuning) * refractive_index * (1 + frequency / F0)
+    xp = _xp(tuning, frequency, refractive_index)
+    return 2 * xp.radians(tuning) * refractive_index * (1 + frequency / F0)
 
 
 def reflectivity_left(
@@ -1243,7 +1261,8 @@ def reflectivity_left(
     jax.numpy.ndarray
         Complex scalar reflection coefficient.
     """
-    return -jnp.sqrt(reflectivity) * jnp.exp(
+    xp = _xp(reflectivity, tuning, frequency, refractive_index_left, alpha)
+    return -xp.sqrt(reflectivity) * xp.exp(
         1j * phase_shift(tuning, frequency, refractive_index_left) * incidence_angle_left(alpha)
     )
 
@@ -1284,7 +1303,8 @@ def reflectivity_right(
     The right-side incidence angle projection is computed with Snell's law and
     applied to the phase.
     """
-    return -jnp.sqrt(reflectivity) * jnp.exp(
+    xp = _xp(reflectivity, tuning, frequency, refractive_index_left, refractive_index_right, alpha)
+    return -xp.sqrt(reflectivity) * xp.exp(
         -1j
         * phase_shift(tuning, frequency, refractive_index_right)
         * incidence_angle_right(alpha, refractive_index_right, refractive_index_left)
@@ -1327,11 +1347,12 @@ def transmissivity(
     Includes a fixed quadrature phase (pi/2) and a differential phase term between
     left and right sides to match the Finesse plane-wave convention.
     """
+    xp = _xp(transmissivity, tuning, frequency, refractive_index_left, refractive_index_right, alpha)
     left_term = phase_shift(tuning, frequency, refractive_index_left) * incidence_angle_left(alpha)
     right_term = phase_shift(tuning, frequency, refractive_index_right) * incidence_angle_right(
         alpha, refractive_index_left, refractive_index_right
     )
-    return -jnp.sqrt(transmissivity) * jnp.exp(1j * (jnp.pi / 2 + 0.5 * (left_term - right_term)))
+    return -xp.sqrt(transmissivity) * xp.exp(1j * (xp.pi / 2 + 0.5 * (left_term - right_term)))
 
 
 # -----------------------------------------------------------------------------

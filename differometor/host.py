@@ -177,8 +177,52 @@ def _sub_jaxpr(eqn):
     raise NotImplementedError(str(eqn.primitive))
 
 
+# Structural primitives whose axis parameters shift when a leading batch axis is present.
+def _batched_structural(name, x, params, batched_flags, batch_size):
+    """Apply a structural primitive to operands that may carry a leading batch axis."""
+    b = batched_flags[0]
+    if name == "broadcast_in_dim":
+        if not b:
+            return _broadcast_in_dim(x[0], **params), False
+        shape = (batch_size, *params["shape"])
+        dims = (0, *[d + 1 for d in params["broadcast_dimensions"]])
+        return _broadcast_in_dim(x[0], shape, dims), True
+    if not any(batched_flags):
+        return _PRIMITIVES[name](*x, **params), False
+    if name == "slice":
+        st = params.get("strides") or (1,) * len(params["start_indices"])
+        return _slice(x[0], (0, *params["start_indices"]), (x[0].shape[0], *params["limit_indices"]), (1, *st)), True
+    if name == "squeeze":
+        return np.squeeze(x[0], axis=tuple(d + 1 for d in params["dimensions"])), True
+    if name == "expand_dims":
+        return np.expand_dims(x[0], tuple(d + 1 for d in params["dimensions"])), True
+    if name == "reshape":
+        if params.get("dimensions") is not None:
+            raise NotImplementedError("reshape with dimensions")
+        return np.reshape(x[0], (batch_size, *params["new_sizes"])), True
+    if name == "pad":
+        return _pad(x[0], x[1], ((0, 0, 0), *params["padding_config"])), True
+    if name == "concatenate":
+        parts = [xi if bi else np.broadcast_to(xi, (batch_size, *np.shape(xi))) for xi, bi in zip(x, batched_flags)]
+        return np.concatenate(parts, axis=params["dimension"] + 1), True
+    if name == "split":
+        return _split(x[0], params["sizes"], params["axis"] + 1), True
+    if name == "transpose":
+        return np.transpose(x[0], (0, *[p + 1 for p in params["permutation"]])), True
+    if name in ("reduce_sum", "reduce_max", "reduce_min"):
+        reducer = {"reduce_sum": np.sum, "reduce_max": np.max, "reduce_min": np.min}[name]
+        return reducer(x[0], axis=tuple(a + 1 for a in params["axes"])), True
+    raise NotImplementedError(name)
+
+
+_STRUCTURAL = {"broadcast_in_dim", "slice", "squeeze", "expand_dims", "reshape", "pad", "concatenate",
+               "split", "transpose", "reduce_sum", "reduce_max", "reduce_min"}
+# Primitives that are not elementwise and have no batched rule here.
+_UNBATCHABLE = {"dot_general"}
+
+
 def unsupported_primitives(jaxpr, found=None):
-    """Return the set of primitive names in `jaxpr` the interpreter cannot run."""
+    """Return the set of primitive names in `jaxpr` the batched interpreter cannot run."""
     found = set() if found is None else found
     for eqn in jaxpr.eqns:
         name = str(eqn.primitive)
@@ -187,56 +231,105 @@ def unsupported_primitives(jaxpr, found=None):
                 unsupported_primitives(_sub_jaxpr(eqn)[0], found)
             except NotImplementedError:
                 found.add(name)
-        elif name not in _PRIMITIVES:
+        elif name not in _PRIMITIVES or name in _UNBATCHABLE:
             found.add(name)
+        elif name == "reshape" and eqn.params.get("dimensions") is not None:
+            found.add("reshape(dimensions)")
     return found
 
 
-def eval_jaxpr(jaxpr, consts, *args):
-    env = {}
+def eval_jaxpr_batched(jaxpr, consts, args, batched, batch_size):
+    """Evaluate an *unbatched* jaxpr on inputs that may carry a leading batch axis.
+
+    Equivalent to evaluating `jax.vmap` of the function: elementwise primitives
+    broadcast naturally (unbatched operands have the per-example shape), and
+    structural primitives shift their axis parameters by one.
+    Returns (outputs, batched_flags).
+    """
+    env, flags = {}, {}
 
     def read(v):
-        return v.val if isinstance(v, jcore.Literal) else env[v]
+        if isinstance(v, jcore.Literal):
+            return v.val, False
+        return env[v], flags[v]
 
     for v, x in zip(jaxpr.constvars, consts):
-        env[v] = np.asarray(x)
-    for v, x in zip(jaxpr.invars, args):
-        env[v] = x
+        env[v], flags[v] = np.asarray(x), False
+    for v, x, b in zip(jaxpr.invars, args, batched):
+        env[v], flags[v] = x, b
     for eqn in jaxpr.eqns:
-        inputs = [read(v) for v in eqn.invars]
+        values, bflags = zip(*[read(v) for v in eqn.invars]) if eqn.invars else ((), ())
         name = str(eqn.primitive)
         if name in _CALL_PRIMITIVES:
             sub, sub_consts = _sub_jaxpr(eqn)
             n_in = len(sub.invars)
-            outputs = eval_jaxpr(sub, sub_consts, *inputs[-n_in:] if n_in else [])
+            outputs, out_flags = eval_jaxpr_batched(sub, sub_consts, values[len(values) - n_in:],
+                                                    bflags[len(bflags) - n_in:], batch_size)
+        elif name in _STRUCTURAL:
+            out, flag = _batched_structural(name, values, eqn.params, bflags, batch_size)
+            outputs, out_flags = (out if eqn.primitive.multiple_results else [out]), None
+            out_flags = [flag] * len(outputs)
         else:
-            outputs = _PRIMITIVES[name](*inputs, **eqn.params)
-        if eqn.primitive.multiple_results:
-            for v, x in zip(eqn.outvars, outputs):
-                env[v] = np.asarray(x)
-        else:
-            env[eqn.outvars[0]] = np.asarray(outputs)
-    return [read(v) for v in jaxpr.outvars]
+            out = _PRIMITIVES[name](*values, **eqn.params)
+            outputs = out if eqn.primitive.multiple_results else [out]
+            out_flags = [any(bflags)] * len(outputs)
+        for v, x, b in zip(eqn.outvars, outputs, out_flags):
+            env[v], flags[v] = np.asarray(x), b
+    results = [read(v) for v in jaxpr.outvars]
+    return [r[0] for r in results], [r[1] for r in results]
+
+
+def _dce(jaxpr, used):
+    try:
+        from jax._src.interpreters import partial_eval as pe
+        return pe.dce_jaxpr(jaxpr, used)[0]
+    except Exception:  # pragma: no cover - private API changed; keep the full jaxpr
+        return None
 
 
 class TracedFunction:
-    """Forward and VJP jaxprs of a batched (vmapped) function for one input shape."""
+    """Forward and VJP jaxprs of a per-example function, evaluated batched with NumPy.
 
-    def __init__(self, function, shape, dtype):
-        batched = jax.vmap(function)
-        example = jax.ShapeDtypeStruct(shape, dtype)
-        forward = jax.make_jaxpr(batched)(example)
-        out = forward.out_avals[0]
-        backward = jax.make_jaxpr(lambda x, ct: jax.vjp(batched, x)[1](ct))(
-            example, jax.ShapeDtypeStruct(out.shape, out.dtype))
-        self.forward, self.backward = forward, backward
-        self.unsupported = unsupported_primitives(forward.jaxpr) | unsupported_primitives(backward.jaxpr)
+    One trace of x -> (f(x), vjp(f, x)(ct)) provides both programs; dead-code
+    elimination splits off the forward-only part.
+    """
+
+    def __init__(self, function, in_shape, dtype):
+        example = jax.ShapeDtypeStruct(in_shape, dtype)
+        out = jax.eval_shape(function, example)
+        self.out_shape, self.out_dtype = out.shape, out.dtype
+
+        def both(x, ct):
+            y, pullback = jax.vjp(function, x)
+            return y, pullback(ct)[0]
+
+        closed = jax.make_jaxpr(both)(example, jax.ShapeDtypeStruct(out.shape, out.dtype))
+        self.consts = closed.consts
+        self.backward = closed.jaxpr
+        self.forward = _dce(closed.jaxpr, [True, False])
+        self.forward_has_ct = True  # dce keeps invars; ct input is simply unused
+        if self.forward is None:
+            self.forward = closed.jaxpr
+        self.unsupported = unsupported_primitives(self.backward)
+
+    def _run(self, jaxpr, x, ct):
+        x = np.asarray(x)
+        batch = x.shape[0]
+        if ct is None:
+            ct = np.zeros(self.out_shape, np.dtype(self.out_dtype))
+            ct_batched = False
+        else:
+            ct_batched = True
+        outs, flags = eval_jaxpr_batched(jaxpr, self.consts, [x, ct], [True, ct_batched], batch)
+        return [o if f else np.broadcast_to(o, (batch, *np.shape(o))) for o, f in zip(outs, flags)]
 
     def __call__(self, x):
-        return eval_jaxpr(self.forward.jaxpr, self.forward.consts, x)[0]
+        """Batched forward: x (B, *in_shape) -> (B, *out_shape)."""
+        return self._run(self.forward, x, None)[0]
 
     def vjp(self, x, ct):
-        return eval_jaxpr(self.backward.jaxpr, self.backward.consts, x, ct)[0]
+        """Batched VJP: x (B, *in_shape), ct (B, *out_shape) -> (B, *in_shape)."""
+        return self._run(self.backward, x, np.asarray(ct))[1]
 
 
 # ======================================================================
@@ -250,18 +343,17 @@ class Plan:
         self.shapes = shapes
         self.traced = {}
         self.unsupported = set()
-        for matrix, groups in groups_meta.items():
-            for key, (k_rows, rows_count) in groups.items():
+        for groups in groups_meta.values():
+            for key in groups:
                 fid = int(key[1:])
-                sig = (fid, rows_count * k_rows)
-                if sig not in self.traced:
-                    t = TracedFunction(FUNCTIONS[fid], (rows_count * k_rows, 7), jnp.complex128)
-                    self.traced[sig] = t
+                if fid not in self.traced:
+                    t = TracedFunction(FUNCTIONS[fid], (7,), jnp.complex128)
+                    self.traced[fid] = t
                     self.unsupported |= t.unsupported
         self.links = []
         if n_links:
             for function in LINKING_FUNCTIONS:
-                t = TracedFunction(function, (1,), jnp.complex128)
+                t = TracedFunction(function, (), jnp.complex128)
                 self.links.append(t)
                 self.unsupported |= t.unsupported
 
@@ -306,7 +398,7 @@ def _assemble(plan, parameters, base, groups):
     for key, g in groups.items():
         fid = int(key[1:])
         inputs = parameters[:, g["inputs"]].reshape(-1, 7)  # (R*K, 7)
-        traced = plan.traced[(fid, inputs.shape[0])]
+        traced = plan.traced[fid]
         out = traced(inputs).reshape(rows_count, g["inputs"].shape[0], -1)
         values[:, g["k"]] = out[:, g["rows"], g["slots"]]
         saved.append((key, inputs, out.shape))
@@ -321,7 +413,7 @@ def _assemble_backward(plan, ct_values, groups, saved, parameters_shape):
         fid = int(key[1:])
         ct_out = np.zeros(out_shape, np.complex128)
         np.add.at(ct_out, (slice(None), g["rows"], g["slots"]), ct_values[:, g["k"]])
-        ct_in = plan.traced[(fid, inputs.shape[0])].vjp(inputs, ct_out.reshape(inputs.shape[0], -1))
+        ct_in = plan.traced[fid].vjp(inputs, ct_out.reshape(inputs.shape[0], -1))
         ct_in = np.asarray(ct_in).reshape(out_shape[0], g["inputs"].shape[0], 7)
         rows = np.arange(out_shape[0])[:, None, None]
         np.add.at(ct_parameters, (np.broadcast_to(rows, ct_in.shape), np.broadcast_to(g["inputs"][None], ct_in.shape)), ct_in)
