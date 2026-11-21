@@ -27,7 +27,7 @@ from jax import lax, vmap, jit
 from differometor.setups import Setup
 from differometor.build import build, pairs_to_arrays, prepare_arrays, LINKING_FUNCTIONS
 from differometor.components import (
-    FUNCTIONS, UNIT_VACUUM, H_PLANCK, F0,
+    FUNCTIONS, UNIT_VACUUM, H_PLANCK, F0, evaluate_components,
     laser, surface, space, space_lower, dummy_function, vacuum_quantum_noise, loss_quantum_noise, squeezer,
 )
 from differometor.sparse_solve import sparse_solve, sparse_system_solve, sparse_system_transpose_solve
@@ -78,20 +78,20 @@ solve = _dense_solve if _DENSE else sparse_solve
 
 
 # Verdict 5: `vmap(lax.switch(i, FUNCTIONS, x))` over a batched index lowers to "evaluate every branch
-# on every row, then select", and JAX differentiates all of those branches again. That is what makes
-# XLA compile times explode (tens of seconds on one CPU). `differometor.build` only ever assigns a
-# small, fixed set of component functions to each of the three systems, so each call site dispatches
-# over just its own branches (indices are remapped to positions in that branch list).
+# on every row, then select", and reverse-mode AD differentiates every branch again - tens of seconds
+# of XLA compile time on one CPU. By default component functions are evaluated by the branch-free
+# `components.evaluate_components` (one shared formula set, one cos/sin per output slot, selects by
+# function id). DIFFEROMETOR_DISPATCH=sites switches over just each call site's own functions
+# (`differometor.build` assigns each system a small fixed set); =full is the original 19-way switch.
+_DISPATCH_MODE = os.environ.get("DIFFEROMETOR_DISPATCH", "unified")
 _CARRIER_FUNCTIONS = (laser, surface, space, dummy_function)
 _NOISE_FUNCTIONS = (vacuum_quantum_noise, loss_quantum_noise, squeezer, dummy_function)
 _SIGNAL_FUNCTIONS = tuple(f for f in FUNCTIONS if f not in (laser, vacuum_quantum_noise, loss_quantum_noise, squeezer))
-# DIFFEROMETOR_DISPATCH=full restores the 19-way switch at every call site (original behaviour).
-_FULL_DISPATCH = os.environ.get("DIFFEROMETOR_DISPATCH") == "full"
 
 
 def _dispatcher(branches: tuple) -> tuple:
     """(branch list, global-function-index -> branch position table) for one call site."""
-    if _FULL_DISPATCH:
+    if _DISPATCH_MODE == "full":
         return tuple(FUNCTIONS), np.arange(len(FUNCTIONS))
     table = np.zeros(len(FUNCTIONS), dtype=np.int32)
     for position, function in enumerate(branches):
@@ -99,14 +99,17 @@ def _dispatcher(branches: tuple) -> tuple:
     return tuple(branches), table
 
 
+_FULL_DISPATCH_TABLE = (tuple(FUNCTIONS), np.arange(len(FUNCTIONS)))
 _CARRIER_DISPATCH = _dispatcher(_CARRIER_FUNCTIONS)
 _NOISE_DISPATCH = _dispatcher(_NOISE_FUNCTIONS)
 _SIGNAL_DISPATCH = _dispatcher(_SIGNAL_FUNCTIONS)
 
 
-def _evaluate(dispatch: tuple, function_indices: jnp.ndarray, function_inputs: jnp.ndarray) -> jnp.ndarray:
+def _evaluate(dispatch: tuple | None, function_indices: jnp.ndarray, function_inputs: jnp.ndarray) -> jnp.ndarray:
     """Evaluate component function `function_indices[k]` on `function_inputs[k]`; rows (K, 4)."""
-    branches, table = dispatch
+    if _DISPATCH_MODE == "unified":
+        return evaluate_components(function_indices, function_inputs)
+    branches, table = dispatch or _FULL_DISPATCH_TABLE
     local = jnp.asarray(table)[function_indices]
     return vmap(lambda i, x: lax.switch(i, branches, x))(local, function_inputs)
 
@@ -159,7 +162,7 @@ def update(
     tracing, which keeps the function jittable as long as the list is stable.
     """
     function_inputs = parameters[function_input_indices]
-    output_matrix = _evaluate(dispatch or (tuple(FUNCTIONS), np.arange(len(FUNCTIONS))), function_indices, function_inputs)
+    output_matrix = _evaluate(dispatch, function_indices, function_inputs)
     outputs = output_matrix[output_indices[0], output_indices[1]]
     return matrix.at[matrix_indices[0], matrix_indices[1]].set(outputs)
 
@@ -176,8 +179,68 @@ def update_values(
     them into a dense matrix. Entry m belongs at position `matrix_indices[:, m]`.
     """
     function_inputs = parameters[function_input_indices]
-    output_matrix = _evaluate(dispatch or (tuple(FUNCTIONS), np.arange(len(FUNCTIONS))), function_indices, function_inputs)
+    output_matrix = _evaluate(dispatch, function_indices, function_inputs)
     return output_matrix[output_indices[0], output_indices[1]]
+
+
+def scatter_outputs(
+    output_matrix: jnp.ndarray,
+    matrix: jnp.ndarray,
+    output_indices: tuple[jnp.ndarray, jnp.ndarray],
+    matrix_indices: tuple[jnp.ndarray, jnp.ndarray],
+) -> jnp.ndarray:
+    """Write already evaluated component outputs `output_matrix` (K, 4) into `matrix` (the scatter
+    half of `update`)."""
+    outputs = output_matrix[output_indices[0], output_indices[1]]
+    return matrix.at[matrix_indices[0], matrix_indices[1]].set(outputs)
+
+
+def _component_outputs(
+    carrier_parameters, signal_parameters,
+    carrier_function_input_indices, carrier_function_indices,
+    signal_function_input_indices, signal_function_indices,
+    noise_function_input_indices, noise_function_indices,
+):
+    """
+    Evaluate every component function of the three systems: carrier (CV, Kc, 4), signal (SV, Ks, 4)
+    and noise (Kn, 4; frequency independent, so evaluated on the first parameter row only).
+
+    In the default unified mode this is ONE flat call of the branch-free kernel over all rows of all
+    three systems: XLA then compiles (and differentiates) the kernel once instead of once per
+    system, which is most of the compile time. Other dispatch modes evaluate per system.
+    """
+    # Input rows are 7 wide, except the 3-wide placeholder `build` emits for a system without
+    # updates (the dummy function ignores its input); pad so the rows can be evaluated together.
+    pad = lambda rows: jnp.pad(rows, [(0, 0)] * (rows.ndim - 1) + [(0, max(0, 7 - rows.shape[-1]))])
+    carrier_rows = pad(carrier_parameters[:, carrier_function_input_indices])  # (CV, Kc, 7)
+    signal_rows = pad(signal_parameters[:, signal_function_input_indices])  # (SV, Ks, 7)
+    noise_rows = pad(signal_parameters[0][noise_function_input_indices])  # (Kn, 7)
+    if _DISPATCH_MODE != "unified":
+        per_system = lambda dispatch, ids, rows: vmap(lambda r: _evaluate(dispatch, ids, r))(rows)
+        return (
+            per_system(_CARRIER_DISPATCH, carrier_function_indices, carrier_rows),
+            per_system(_SIGNAL_DISPATCH, signal_function_indices, signal_rows),
+            _evaluate(_NOISE_DISPATCH, noise_function_indices, noise_rows),
+        )
+    n_carrier = carrier_rows.shape[0] * carrier_rows.shape[1]
+    n_signal = signal_rows.shape[0] * signal_rows.shape[1]
+    outputs = lax.optimization_barrier(evaluate_components(
+        jnp.concatenate(
+            [
+                jnp.tile(carrier_function_indices, carrier_rows.shape[0]),
+                jnp.tile(signal_function_indices, signal_rows.shape[0]),
+                noise_function_indices,
+            ]
+        ),
+        lax.optimization_barrier(
+            jnp.concatenate([carrier_rows.reshape(-1, 7), signal_rows.reshape(-1, 7), noise_rows])
+        ),
+    ))
+    return (
+        outputs[:n_carrier].reshape(carrier_rows.shape[:2] + (4,)),
+        outputs[n_carrier : n_carrier + n_signal].reshape(signal_rows.shape[:2] + (4,)),
+        outputs[n_carrier + n_signal :],
+    )
 
 
 def _last_wins(linear_positions: jnp.ndarray) -> jnp.ndarray:
@@ -270,10 +333,9 @@ def _sideband_conjugation_mask(rows, cols, carrier_size):
 
 
 def _signal_and_noise_sparse(
-    parameters, carrier, signal_matrix, noise_selection_vectors, qhd_placing_indices, qhd_phase_values,
-    signal_function_input_indices, signal_function_indices, signal_output_indices, signal_matrix_indices,
-    signal_carrier_indices, signal_carrier_placing_indices,
-    noise_function_input_indices, noise_function_indices, noise_output_indices, noise_system_matrix_indices,
+    signal_outputs, noise_outputs, carrier, signal_matrix, noise_selection_vectors, qhd_placing_indices,
+    qhd_phase_values, signal_output_indices, signal_matrix_indices, signal_carrier_indices,
+    signal_carrier_placing_indices, noise_output_indices, noise_system_matrix_indices,
 ):
     """
     Signal system and quantum noise without ever building a dense (SV, SN, SN) matrix.
@@ -290,10 +352,7 @@ def _signal_and_noise_sparse(
     carrier_size = carrier.shape[1]
 
     # Per-frequency matrix entries from the component functions: (SV, M).
-    vals = vmap(update_values, in_axes=(0, None, None, None, None))(
-        parameters, signal_function_input_indices, signal_output_indices, signal_function_indices,
-        _SIGNAL_DISPATCH,
-    )
+    vals = signal_outputs[:, signal_output_indices[0], signal_output_indices[1]]
     rows = signal_matrix_indices[0]
     cols = jnp.where(signal_matrix_indices[1] < 0, signal_matrix_indices[1] + n + 1, signal_matrix_indices[1])
 
@@ -340,9 +399,7 @@ def _signal_and_noise_sparse(
 
     # Noise source matrix N: frequency independent (none of the noise functions read the swept
     # frequency), so evaluate it once; sum Re(conj(w_r) N_rc w_c) over its nonzero entries only.
-    noise_values = update_values(
-        parameters[0], noise_function_input_indices, noise_output_indices, noise_function_indices, _NOISE_DISPATCH
-    )
+    noise_values = noise_outputs[noise_output_indices[0], noise_output_indices[1]]
     noise_rows, noise_cols = noise_system_matrix_indices
     noise_values = jnp.where(_last_wins(noise_rows * n + noise_cols), noise_values, 0)
     quadratic = jnp.sum(
@@ -352,20 +409,13 @@ def _signal_and_noise_sparse(
 
 
 def _signal_and_noise_dense(
-    parameters, carrier, signal_matrix, noise_matrix, noise_selection_vectors, qhd_placing_indices,
-    qhd_phase_values, signal_function_input_indices, signal_function_indices, signal_output_indices,
-    signal_matrix_indices, signal_carrier_indices, signal_carrier_placing_indices,
-    noise_function_input_indices, noise_function_indices, noise_output_indices, noise_system_matrix_indices,
+    signal_outputs, noise_outputs, carrier, signal_matrix, noise_matrix, noise_selection_vectors,
+    qhd_placing_indices, qhd_phase_values, signal_output_indices, signal_matrix_indices,
+    signal_carrier_indices, signal_carrier_placing_indices, noise_output_indices, noise_system_matrix_indices,
 ):
     """Original dense implementation (DIFFEROMETOR_SOLVER=dense): reference for the sparse path."""
-    signal_matrix = vmap(update, in_axes=(0, None, None, None, None, None, None))(
-        parameters,
-        signal_matrix,
-        signal_function_input_indices,
-        signal_output_indices,
-        signal_matrix_indices,
-        signal_function_indices,
-        _SIGNAL_DISPATCH,
+    signal_matrix = vmap(scatter_outputs, in_axes=(0, None, None, None))(
+        signal_outputs, signal_matrix, signal_output_indices, signal_matrix_indices
     )
     signal_entries = (
         -signal_matrix[:, signal_carrier_placing_indices[0], signal_carrier_placing_indices[1]]
@@ -392,15 +442,8 @@ def _signal_and_noise_dense(
     )
     transposed_conjugated_signal_matrix = jnp.transpose(jnp.conjugate(signal_matrix[:, :, :-1]), (0, 2, 1))
     noise_weights = vmap(vmap(solve), in_axes=(None, 0))(transposed_conjugated_signal_matrix, carrier_selections)
-    noise_matrix = vmap(update, in_axes=(0, None, None, None, None, None, None))(
-        parameters,
-        noise_matrix,
-        noise_function_input_indices,
-        noise_output_indices,
-        noise_system_matrix_indices,
-        noise_function_indices,
-        _NOISE_DISPATCH,
-    )
+    noise_matrix = scatter_outputs(noise_outputs, noise_matrix, noise_output_indices, noise_system_matrix_indices)
+    noise_matrix = jnp.broadcast_to(noise_matrix, (signal_matrix.shape[0],) + noise_matrix.shape)
     noise_sources = vmap(lambda m, w: jnp.einsum("bij,bj->bi", m, w), in_axes=(None, 0))(noise_matrix, noise_weights)
     covariances = vmap(vmap(solve), in_axes=(None, 0))(signal_matrix[:, :, :-1], noise_sources)
     temporary_sum = jnp.sum(jnp.real(covariances * jnp.conjugate(carrier_selections)), axis=2)
@@ -542,40 +585,42 @@ def simulate(
     qhd_phase_values = jnp.exp(1j * jnp.radians(parameters[0, qhd_parameter_indices]))
 
     # --------------------
+    # Component functions of all three systems, evaluated together
+    # --------------------
+    carrier_parameters = expand_parameters(parameters, carrier_changing_parameter_indices, carrier_changing_values)
+    signal_parameters = expand_parameters(carrier_parameters, signal_changing_parameter_indices, signal_changing_values)
+    carrier_outputs, signal_outputs, noise_outputs = _component_outputs(
+        carrier_parameters, signal_parameters,
+        carrier_function_input_indices, carrier_function_indices,
+        signal_function_input_indices, signal_function_indices,
+        noise_function_input_indices, noise_function_indices,
+    )
+
+    # --------------------
     # Carrier solve
     # --------------------
-    parameters = expand_parameters(parameters, carrier_changing_parameter_indices, carrier_changing_values)
-    carrier_matrix = vmap(update, in_axes=(0, None, None, None, None, None, None))(
-        parameters,
-        carrier_matrix,
-        carrier_function_input_indices,
-        carrier_output_indices,
-        carrier_matrix_indices,
-        carrier_function_indices,
-        _CARRIER_DISPATCH,
+    carrier_matrix = vmap(scatter_outputs, in_axes=(0, None, None, None))(
+        carrier_outputs, carrier_matrix, carrier_output_indices, carrier_matrix_indices
     )
     carrier = vmap(solve)(carrier_matrix[:, :, :-1], carrier_matrix[:, :, -1])
 
     # --------------------
     # Signal solve + quantum noise
     # --------------------
-    parameters = expand_parameters(parameters, signal_changing_parameter_indices, signal_changing_values)
     if _DENSE:
         signal, noise = _signal_and_noise_dense(
-            parameters, carrier, signal_matrix, noise_matrix, noise_selection_vectors, qhd_placing_indices,
-            qhd_phase_values, signal_function_input_indices, signal_function_indices, signal_output_indices,
-            signal_matrix_indices, signal_carrier_indices, signal_carrier_placing_indices,
-            noise_function_input_indices, noise_function_indices, noise_output_indices,
+            signal_outputs, noise_outputs, carrier, signal_matrix, noise_matrix, noise_selection_vectors,
+            qhd_placing_indices, qhd_phase_values, signal_output_indices, signal_matrix_indices,
+            signal_carrier_indices, signal_carrier_placing_indices, noise_output_indices,
             noise_system_matrix_indices,
         )
     else:
         # The noise source matrix is assumed to start out empty (as `build` always creates it): all
         # its nonzeros are written by the noise component functions.
         signal, noise = _signal_and_noise_sparse(
-            parameters, carrier, signal_matrix, noise_selection_vectors, qhd_placing_indices,
-            qhd_phase_values, signal_function_input_indices, signal_function_indices, signal_output_indices,
-            signal_matrix_indices, signal_carrier_indices, signal_carrier_placing_indices,
-            noise_function_input_indices, noise_function_indices, noise_output_indices,
+            signal_outputs, noise_outputs, carrier, signal_matrix, noise_selection_vectors,
+            qhd_placing_indices, qhd_phase_values, signal_output_indices, signal_matrix_indices,
+            signal_carrier_indices, signal_carrier_placing_indices, noise_output_indices,
             noise_system_matrix_indices,
         )
 
