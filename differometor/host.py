@@ -539,6 +539,43 @@ def _factor(values, rows, cols, n):
     return RefinedLU(values, rows, cols, n)
 
 
+_BATCHED_PATTERNS = {}
+
+
+class BatchedLU:
+    """Factorise F same-pattern systems at once as one block-diagonal sparse matrix.
+
+    Block-diagonal LU is exactly the per-block LU (pivoting cannot cross blocks), but
+    one SuperLU call replaces F calls and every solve handles all F right-hand sides
+    together, removing per-call overhead. If any block is singular the systems are
+    re-factorised one by one so that only the singular frequencies become NaN.
+    values: (F, nnz). solve(b): b of shape (F, n) or (F, n, k).
+    """
+
+    def __init__(self, values, rows, cols, n):
+        values = np.asarray(values, dtype=np.complex128)
+        self.F, self.n = values.shape[0], n
+        key = (n, self.F, hash(np.asarray(rows).tobytes()), hash(np.asarray(cols).tobytes()))
+        big = _BATCHED_PATTERNS.get(key)
+        if big is None:
+            offsets = (np.arange(self.F) * n)[:, None]
+            big = _BATCHED_PATTERNS[key] = (
+                (np.asarray(rows)[None, :] + offsets).reshape(-1), (np.asarray(cols)[None, :] + offsets).reshape(-1))
+        self.parts = None
+        self.lu = RefinedLU(values.reshape(-1), big[0], big[1], self.F * n) if self.F > 1 else None
+        if self.lu is None or self.lu.lu is None:
+            self.parts = [RefinedLU(values[f], rows, cols, n) for f in range(self.F)]
+
+    def solve(self, b, trans="N"):
+        b = np.asarray(b, dtype=np.complex128)
+        if b.ndim == 3 and b.shape[2] == 0:
+            return np.zeros(b.shape, np.complex128)
+        if self.parts is not None:
+            return np.stack([lu.solve(b[f], trans) for f, lu in enumerate(self.parts)])
+        flat = b.reshape(self.F * self.n, *b.shape[2:])
+        return self.lu.solve(np.ascontiguousarray(flat), trans).reshape(b.shape)
+
+
 def _forward(plan, a):
     """Full forward pass. `a` holds NumPy arrays. Returns outputs and residuals."""
     r = {}
@@ -561,8 +598,8 @@ def _forward(plan, a):
     F_c = cvals.shape[0]
     cb = np.zeros((F_c, CN), np.complex128)
     cb[:, a["carrier_rhs_rows"]] = cvals[:, n_c:]
-    lus_c = [_factor(cvals[f, :n_c], a["carrier_rows"], a["carrier_cols"], CN) for f in range(F_c)]
-    carrier = np.stack([lu.solve(cb[f]) for f, lu in enumerate(lus_c)])  # (CV, CN)
+    lus_c = BatchedLU(cvals[:, :n_c], a["carrier_rows"], a["carrier_cols"], CN)
+    carrier = lus_c.solve(cb)  # (CV, CN)
 
     # signal
     Ps, src_s, set_s = _expand(Pc, a["signal_changing_parameter_indices"], a["signal_changing_values"])
@@ -594,12 +631,9 @@ def _forward(plan, a):
     D = sel.shape[0]
     c = np.ascontiguousarray(np.transpose(np.broadcast_to(sel, (D, F, SN)), (1, 0, 2)))  # (F, D, SN)
 
-    lus_s = [_factor(svals[f, :n_s], a["signal_rows"], a["signal_cols"], SN) for f in range(F)]
-    signal = np.empty((F, SN), np.complex128)
-    w = np.empty((F, D, SN), np.complex128)
-    for f, lu in enumerate(lus_s):
-        signal[f] = lu.solve(sb[f])
-        w[f] = lu.solve(np.ascontiguousarray(c[f].T), trans="H").T
+    lus_s = BatchedLU(svals[:, :n_s], a["signal_rows"], a["signal_cols"], SN)
+    signal = lus_s.solve(sb)  # (F, SN)
+    w = np.ascontiguousarray(np.transpose(lus_s.solve(np.transpose(c, (0, 2, 1)), trans="H"), (0, 2, 1)))  # (F, D, SN)
 
     # quantum noise
     nvals, saved_n = _assemble(plan, Ps, a["noise_values"], a["noise_groups"])
@@ -642,14 +676,12 @@ def _backward(plan, a, r, ct_carrier_T, ct_signal_T, ct_noise):
     n_s = a["signal_rows"].shape[0]
     sr, sc = a["signal_rows"], a["signal_cols"]
     ct_svals = np.zeros(svals.shape, np.complex128)
-    ct_c = np.empty((F, D, SN), np.complex128)
     signal = r["signal"]
-    for f, lu in enumerate(r["lus_s"]):
-        bb = lu.solve(ct_signal[f], trans="T")
-        y = lu.solve(np.ascontiguousarray(np.conj(ct_w[f]).T)).T  # (D, SN)
-        ct_c[f] = np.conj(y)
-        ct_svals[f, :n_s] = -bb[sr] * signal[f][sc] - np.sum(np.conj(w[f][:, sr]) * y[:, sc], axis=0)
-        ct_svals[f, n_s:] = bb[a["signal_rhs_rows"]]
+    bb = r["lus_s"].solve(ct_signal, trans="T")  # (F, SN)
+    y = np.transpose(r["lus_s"].solve(np.transpose(np.conj(ct_w), (0, 2, 1))), (0, 2, 1))  # (F, D, SN)
+    ct_c = np.conj(y)
+    ct_svals[:, :n_s] = -bb[:, sr] * signal[:, sc] - np.sum(np.conj(w[:, :, sr]) * y[:, :, sc], axis=1)
+    ct_svals[:, n_s:] = bb[:, a["signal_rhs_rows"]]
 
     # detector selections -> carrier (and qhd phases)
     ct_sel_b = np.transpose(ct_c, (1, 0, 2))  # (D, F, SN)
@@ -691,10 +723,9 @@ def _backward(plan, a, r, ct_carrier_T, ct_signal_T, ct_noise):
     cvals_ct = np.zeros((CV, a["carrier_values"].shape[0]), np.complex128)
     n_c = a["carrier_rows"].shape[0]
     crr, ccc = a["carrier_rows"], a["carrier_cols"]
-    for f, lu in enumerate(r["lus_c"]):
-        bb = lu.solve(ct_carrier[f], trans="T")
-        cvals_ct[f, :n_c] = -bb[crr] * carrier[f][ccc]
-        cvals_ct[f, n_c:] = bb[a["carrier_rhs_rows"]]
+    bb = r["lus_c"].solve(ct_carrier, trans="T")  # (CV, CN)
+    cvals_ct[:, :n_c] = -bb[:, crr] * carrier[:, ccc]
+    cvals_ct[:, n_c:] = bb[:, a["carrier_rhs_rows"]]
     ct_Pc += _assemble_backward(plan, cvals_ct, a["carrier_groups"], r["saved_c"], r["Pc"].shape)
     ct_P0 += _expand_backward(ct_Pc, r["src_c"], r["set_c"], r["P0"].shape[0])
 
