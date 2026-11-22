@@ -1,0 +1,92 @@
+{
+  "case": "uifo3_amplitude",
+  "measured_at_utc": "2026-11-22T05:47:21.991319+00:00",
+  "frequencies": 101,
+  "design_variables": 194,
+  "phases_first_run": [
+    {
+      "key": "imports",
+      "seconds": 0.28031390899991493
+    },
+    {
+      "key": "initialize",
+      "seconds": 0.008188038000071174
+    },
+    {
+      "key": "build",
+      "seconds": 0.07025498899997729
+    },
+    {
+      "key": "forward_lower",
+      "seconds": 0.017916533000061463
+    },
+    {
+      "key": "forward_compile",
+      "seconds": 0.010396785000011732
+    },
+    {
+      "key": "forward",
+      "seconds": 0.04166758400015169
+    },
+    {
+      "key": "sensitivity_lower",
+      "seconds": 0.027901027999860162
+    },
+    {
+      "key": "sensitivity_compile",
+      "seconds": 0.097429264000084
+    },
+    {
+      "key": "sensitivity",
+      "seconds": 0.0022497580000617745
+    },
+    {
+      "key": "gradient_lower",
+      "seconds": 0.008821967000130826
+    },
+    {
+      "key": "gradient_compile",
+      "seconds": 0.039750428999923315
+    },
+    {
+      "key": "gradient",
+      "seconds": 0.04264883399991959
+    },
+    {
+      "key": "host_transfer",
+      "seconds": 0.00018292200002179015
+    }
+  ],
+  "timing_seconds": {
+    "end_to_end": 0.6477220400001897,
+    "trace_lower_and_compile": 0.2022160060000715,
+    "runtime_median": 0.07606323399977555,
+    "phase_runtime_medians": {
+      "forward": 0.036632802999974956,
+      "sensitivity": 0.001357751000114149,
+      "gradient": 0.03794972199989388,
+      "host_transfer": 0.0001236440000411676
+    }
+  },
+  "validation": {
+    "conditioning": {
+      "checked": true,
+      "nudge_relative": 1e-09,
+      "max_abs_dlog_sensitivity": 2.8741453661496053e-12,
+      "well_conditioned": true
+    },
+    "finite": true,
+    "positive_sensitivity": true,
+    "gradient_nonzero": true,
+    "gradient_check": {
+      "checked": true,
+      "autodiff_directional": -0.0012473922565432495,
+      "rel_error_by_step": {
+        "1e-06": 8.363203446733551e-07,
+        "1e-07": 7.956539388994302e-06
+      },
+      "passed": true
+    },
+    "loss": 12.786092240974298
+  }
+}

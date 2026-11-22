@@ -1,0 +1,11 @@
+case               freq vars |  base e2e  new e2e      x |   base run   new run      x | |dlog sens| rel dgrad  ok
+aligo_21f            21   29 |    29.33s    0.69s  42.3x |     31.3ms     7.7ms   4.1x |     7.2e-11   1.0e-10  PASS
+aligo_301f          301   29 |    24.88s    0.55s  45.1x |    516.1ms    23.8ms  21.7x |     1.2e-10   3.0e-10  PASS
+aligo_5f              5   29 |    23.56s    0.53s  44.5x |     15.0ms     7.1ms   2.1x |     9.9e-12   3.2e-11  PASS
+uifo2_amplitude     101  101 |    33.74s    0.59s  56.9x |   5077.7ms    40.4ms 125.6x |     7.1e-15   2.0e-15  PASS
+uifo2_seed2         101  101 |    31.69s    0.59s  53.3x |   5265.8ms    46.7ms 112.7x |     5.0e-10   1.7e-10  PASS
+uifo2_space         101  101 |    33.96s    0.69s  49.2x |   5317.8ms    46.8ms 113.7x |     5.4e-11   4.3e-11  PASS
+uifo3_amplitude     101  194 |    55.91s    0.65s  86.3x |  17130.6ms    76.1ms 225.2x |     2.5e-14   8.2e-15  PASS
+voyager_21f          21   45 |    28.16s    0.52s  54.4x |    150.4ms     9.5ms  15.8x |     9.8e-12   4.1e-10  PASS
+voyager_301f        301   45 |    27.96s    0.58s  47.8x |   2622.5ms    44.3ms  59.3x |     1.0e-11   3.9e-10  PASS
+voyager_space       101   45 |    27.01s    0.69s  39.4x |    660.1ms    24.9ms  26.6x |     1.0e-11   3.9e-10  PASS
