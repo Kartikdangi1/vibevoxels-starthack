@@ -1,0 +1,92 @@
+{
+  "case": "uifo2_space",
+  "measured_at_utc": "2026-11-22T05:52:48.397264+00:00",
+  "frequencies": 101,
+  "design_variables": 101,
+  "phases_first_run": [
+    {
+      "key": "imports",
+      "seconds": 0.281307052999864
+    },
+    {
+      "key": "initialize",
+      "seconds": 0.0029338370000004943
+    },
+    {
+      "key": "build",
+      "seconds": 0.7892715069999667
+    },
+    {
+      "key": "forward_lower",
+      "seconds": 1.419319378000182
+    },
+    {
+      "key": "forward_compile",
+      "seconds": 15.401156439000033
+    },
+    {
+      "key": "forward",
+      "seconds": 7.992953076000049
+    },
+    {
+      "key": "sensitivity_lower",
+      "seconds": 0.06248659399989265
+    },
+    {
+      "key": "sensitivity_compile",
+      "seconds": 0.43250971199995547
+    },
+    {
+      "key": "sensitivity",
+      "seconds": 0.0009790639999209816
+    },
+    {
+      "key": "gradient_lower",
+      "seconds": 0.4347123239999746
+    },
+    {
+      "key": "gradient_compile",
+      "seconds": 5.464887437000016
+    },
+    {
+      "key": "gradient",
+      "seconds": 1.671977900999991
+    },
+    {
+      "key": "host_transfer",
+      "seconds": 0.0005735209999784274
+    }
+  ],
+  "timing_seconds": {
+    "end_to_end": 33.955067842999824,
+    "trace_lower_and_compile": 23.215071884000054,
+    "runtime_median": 5.317837045000033,
+    "phase_runtime_medians": {
+      "forward": 3.722504134000019,
+      "sensitivity": 0.0232311810000283,
+      "gradient": 1.5449303010000222,
+      "host_transfer": 0.0005688530000043102
+    }
+  },
+  "validation": {
+    "conditioning": {
+      "checked": true,
+      "nudge_relative": 1e-09,
+      "max_abs_dlog_sensitivity": 6.9540817548841e-11,
+      "well_conditioned": true
+    },
+    "finite": true,
+    "positive_sensitivity": true,
+    "gradient_nonzero": true,
+    "gradient_check": {
+      "checked": true,
+      "autodiff_directional": -0.011519039479735028,
+      "rel_error_by_step": {
+        "1e-06": 1.3183409721286774e-05,
+        "1e-07": 4.822989809091928e-05
+      },
+      "passed": true
+    },
+    "loss": 6.165369301017776
+  }
+}

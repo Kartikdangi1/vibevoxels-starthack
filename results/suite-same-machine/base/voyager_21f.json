@@ -1,0 +1,92 @@
+{
+  "case": "voyager_21f",
+  "measured_at_utc": "2026-11-22T05:49:47.148031+00:00",
+  "frequencies": 21,
+  "design_variables": 45,
+  "phases_first_run": [
+    {
+      "key": "imports",
+      "seconds": 0.3011481599999115
+    },
+    {
+      "key": "initialize",
+      "seconds": 0.0031461030000627943
+    },
+    {
+      "key": "build",
+      "seconds": 1.0216199710000637
+    },
+    {
+      "key": "forward_lower",
+      "seconds": 1.7556088530000125
+    },
+    {
+      "key": "forward_compile",
+      "seconds": 18.396589230000018
+    },
+    {
+      "key": "forward",
+      "seconds": 0.11011108599996078
+    },
+    {
+      "key": "sensitivity_lower",
+      "seconds": 0.045841139999993175
+    },
+    {
+      "key": "sensitivity_compile",
+      "seconds": 0.25847425299980387
+    },
+    {
+      "key": "sensitivity",
+      "seconds": 0.0006072839998978452
+    },
+    {
+      "key": "gradient_lower",
+      "seconds": 0.38620998500005044
+    },
+    {
+      "key": "gradient_compile",
+      "seconds": 5.830951805000041
+    },
+    {
+      "key": "gradient",
+      "seconds": 0.05267782399982934
+    },
+    {
+      "key": "host_transfer",
+      "seconds": 0.000611043000162681
+    }
+  ],
+  "timing_seconds": {
+    "end_to_end": 28.163596736999807,
+    "trace_lower_and_compile": 26.67367526599992,
+    "runtime_median": 0.1504413669999849,
+    "phase_runtime_medians": {
+      "forward": 0.10679016299991417,
+      "sensitivity": 0.0007221270000172808,
+      "gradient": 0.042826948000083576,
+      "host_transfer": 0.0003089760000420938
+    }
+  },
+  "validation": {
+    "conditioning": {
+      "checked": true,
+      "nudge_relative": 1e-09,
+      "max_abs_dlog_sensitivity": 8.85155060359466e-09,
+      "well_conditioned": true
+    },
+    "finite": true,
+    "positive_sensitivity": true,
+    "gradient_nonzero": true,
+    "gradient_check": {
+      "checked": true,
+      "autodiff_directional": -1.8385236162045984,
+      "rel_error_by_step": {
+        "1e-06": 4.980514194846526e-07,
+        "1e-07": 3.286597207543015e-06
+      },
+      "passed": true
+    },
+    "loss": -2.0763483741410287
+  }
+}

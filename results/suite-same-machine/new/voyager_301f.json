@@ -1,0 +1,92 @@
+{
+  "case": "voyager_301f",
+  "measured_at_utc": "2026-11-22T05:47:16.181127+00:00",
+  "frequencies": 301,
+  "design_variables": 45,
+  "phases_first_run": [
+    {
+      "key": "imports",
+      "seconds": 0.2657066400001895
+    },
+    {
+      "key": "initialize",
+      "seconds": 0.007823565000080634
+    },
+    {
+      "key": "build",
+      "seconds": 0.03843720199984091
+    },
+    {
+      "key": "forward_lower",
+      "seconds": 0.010673537999991822
+    },
+    {
+      "key": "forward_compile",
+      "seconds": 0.009809927999867796
+    },
+    {
+      "key": "forward",
+      "seconds": 0.023647477999929833
+    },
+    {
+      "key": "sensitivity_lower",
+      "seconds": 0.028042632000051526
+    },
+    {
+      "key": "sensitivity_compile",
+      "seconds": 0.0932212069999423
+    },
+    {
+      "key": "sensitivity",
+      "seconds": 0.002398544999778096
+    },
+    {
+      "key": "gradient_lower",
+      "seconds": 0.0093575860000783
+    },
+    {
+      "key": "gradient_compile",
+      "seconds": 0.06805796200001168
+    },
+    {
+      "key": "gradient",
+      "seconds": 0.027005510999970284
+    },
+    {
+      "key": "host_transfer",
+      "seconds": 0.00021237000009932672
+    }
+  ],
+  "timing_seconds": {
+    "end_to_end": 0.584394163999832,
+    "trace_lower_and_compile": 0.21916285299994342,
+    "runtime_median": 0.04425240699993083,
+    "phase_runtime_medians": {
+      "forward": 0.019800970999995116,
+      "sensitivity": 0.0008976780000011786,
+      "gradient": 0.022444652000103815,
+      "host_transfer": 0.0001118600000609149
+    }
+  },
+  "validation": {
+    "conditioning": {
+      "checked": true,
+      "nudge_relative": 1e-09,
+      "max_abs_dlog_sensitivity": 9.280938684241846e-09,
+      "well_conditioned": true
+    },
+    "finite": true,
+    "positive_sensitivity": true,
+    "gradient_nonzero": true,
+    "gradient_check": {
+      "checked": true,
+      "autodiff_directional": -1.9120612652453906,
+      "rel_error_by_step": {
+        "1e-06": 1.1639911108072202e-07,
+        "1e-07": 3.483645915818077e-06
+      },
+      "passed": true
+    },
+    "loss": -2.10495328306547
+  }
+}

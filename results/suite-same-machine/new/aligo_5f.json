@@ -1,0 +1,92 @@
+{
+  "case": "aligo_5f",
+  "measured_at_utc": "2026-11-22T05:47:10.587561+00:00",
+  "frequencies": 5,
+  "design_variables": 29,
+  "phases_first_run": [
+    {
+      "key": "imports",
+      "seconds": 0.2638766459999715
+    },
+    {
+      "key": "initialize",
+      "seconds": 0.0077426770001238765
+    },
+    {
+      "key": "build",
+      "seconds": 0.04194023899981403
+    },
+    {
+      "key": "forward_lower",
+      "seconds": 0.014869907000047533
+    },
+    {
+      "key": "forward_compile",
+      "seconds": 0.0136921540001822
+    },
+    {
+      "key": "forward",
+      "seconds": 0.005427138999948511
+    },
+    {
+      "key": "sensitivity_lower",
+      "seconds": 0.03638473499995598
+    },
+    {
+      "key": "sensitivity_compile",
+      "seconds": 0.08318574999998418
+    },
+    {
+      "key": "sensitivity",
+      "seconds": 0.0011970840000685712
+    },
+    {
+      "key": "gradient_lower",
+      "seconds": 0.012685163000014654
+    },
+    {
+      "key": "gradient_compile",
+      "seconds": 0.0428915729999062
+    },
+    {
+      "key": "gradient",
+      "seconds": 0.005749306000097931
+    },
+    {
+      "key": "host_transfer",
+      "seconds": 0.00022465799997917202
+    }
+  ],
+  "timing_seconds": {
+    "end_to_end": 0.5298670310000944,
+    "trace_lower_and_compile": 0.20370928200009075,
+    "runtime_median": 0.007145826000169109,
+    "phase_runtime_medians": {
+      "forward": 0.00377129799994691,
+      "sensitivity": 0.0004513409999162832,
+      "gradient": 0.002886854000053063,
+      "host_transfer": 9.075899993149505e-05
+    }
+  },
+  "validation": {
+    "conditioning": {
+      "checked": true,
+      "nudge_relative": 1e-09,
+      "max_abs_dlog_sensitivity": 1.5577729115534567e-06,
+      "well_conditioned": true
+    },
+    "finite": true,
+    "positive_sensitivity": true,
+    "gradient_nonzero": true,
+    "gradient_check": {
+      "checked": true,
+      "autodiff_directional": -1.5955915152738176,
+      "rel_error_by_step": {
+        "1e-06": 6.107964348080043e-07,
+        "1e-07": 2.83456831418942e-05
+      },
+      "passed": true
+    },
+    "loss": -1.3739663984844954
+  }
+}
