@@ -915,9 +915,24 @@ def _signal_detector_bwd_np(carrier, signal, ct):
     return _as_dtype(ct_carrier, carrier.dtype), _as_dtype(ct_signal, signal.dtype)
 
 
+def _signal_detector_shape(carrier, signal):
+    """Result shape/dtype of `_signal_detector_jax` (without tracing it, for complex128 inputs)."""
+    if carrier.dtype == np.complex128 and signal.dtype == np.complex128 and carrier.ndim >= 1 and signal.ndim >= 1:
+        n, rows = carrier.shape[0], signal.shape[0]
+        upper = (min(n, rows), *signal.shape[1:])
+        lower = (max(0, min(2 * n, rows) - n), *signal.shape[1:])
+        try:
+            shape = np.broadcast_shapes(carrier.shape, upper, lower)
+        except ValueError:
+            pass  # let JAX report the error
+        else:
+            return jax.ShapeDtypeStruct(shape, np.complex128)
+    return jax.eval_shape(_signal_detector_jax, carrier, signal)
+
+
 @jax.custom_vjp
 def _signal_detector_host(carrier, signal):
-    out = jax.eval_shape(_signal_detector_jax, carrier, signal)
+    out = _signal_detector_shape(carrier, signal)
     return jax.pure_callback(_signal_detector_np, out, carrier, signal, vmap_method="sequential")
 
 
@@ -947,7 +962,10 @@ def _power_detector_bwd_np(solution, ct):
 
 @jax.custom_vjp
 def _power_detector_host(solution):
-    out = jax.eval_shape(_power_detector_jax, solution)
+    if solution.dtype == np.complex128 or solution.dtype == np.float64:  # |z|^2 * real constant: float64
+        out = jax.ShapeDtypeStruct(solution.shape, np.float64)
+    else:
+        out = jax.eval_shape(_power_detector_jax, solution)
     return jax.pure_callback(_power_detector_np, out, solution, vmap_method="sequential")
 
 

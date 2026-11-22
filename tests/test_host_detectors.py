@@ -50,6 +50,20 @@ def test_power_detector(shape):
     np.testing.assert_allclose(g_host, g_jax, rtol=1e-12, atol=0)
 
 
+@pytest.mark.parametrize("cs,ss", SHAPES + [((3,), (4,)), ((3,), (7, 2)), ((4, 1), (8, 5)), ((2, 3), (5, 1)), ((1,), (2, 4))])
+def test_shape_shortcut_matches_eval_shape(cs, ss):
+    from differometor.components import _signal_detector_shape
+    c, s = jax.ShapeDtypeStruct(cs, jnp.complex128), jax.ShapeDtypeStruct(ss, jnp.complex128)
+    try:
+        expected = jax.eval_shape(_signal_detector_jax, c, s)
+    except Exception:  # incompatible shapes: the shortcut must defer to JAX (and fail the same way)
+        with pytest.raises(Exception):
+            _signal_detector_shape(c, s)
+        return
+    got = _signal_detector_shape(c, s)
+    assert (got.shape, got.dtype) == (expected.shape, expected.dtype)
+
+
 def test_vmap():
     c, s = crandn(4, 6, 1), crandn(4, 13, 2)
     np.testing.assert_allclose(jax.vmap(_signal_detector_host)(c, s), jax.vmap(_signal_detector_jax)(c, s), rtol=1e-14)

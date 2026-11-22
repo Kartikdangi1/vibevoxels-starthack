@@ -83,7 +83,8 @@ class Dual:
                         _sum(_scale(self.b, o.v), _scale(o.b, self.v)))
         return Dual(self.v * o, _scale(self.a, o), _scale(self.b, o))
 
-    __rmul__ = __mul__
+    def __rmul__(self, o):  # o * self; the value keeps the operand order of the plain expression
+        return Dual(o * self.v, _scale(self.a, o), _scale(self.b, o))
 
     def __truediv__(self, o):
         if isinstance(o, Dual):
@@ -99,7 +100,7 @@ class Dual:
     def __pow__(self, n):
         if n != 2:
             raise NotImplementedError
-        return self._chain(self.v * self.v, 2 * self.v)
+        return self._chain(self.v ** 2, 2 * self.v)  # value exactly as the plain `x ** 2`
 
 
 class _DualOps:
@@ -300,6 +301,15 @@ KERNELS = {
 }
 
 
+class _Partials:
+    """Kernel outputs as dual numbers (value and partials), kept from the forward for the VJP."""
+
+    __slots__ = ("outs", "columns")
+
+    def __init__(self, outs, columns):
+        self.outs, self.columns = outs, columns
+
+
 class NativeFunction:
     """Same interface as host.TracedFunction for a kernel f: C^7 -> C^4 (batched)."""
 
@@ -313,30 +323,67 @@ class NativeFunction:
 
     def _columns(self, x):
         x = np.asarray(x, dtype=np.complex128)
-        return x, [x[:, i] for i in range(self.in_shape[0])]
+        # one transpose, so that every column the kernel reads is contiguous (same values)
+        return x, list(np.ascontiguousarray(x.T))
 
-    def __call__(self, x):
-        x, cols = self._columns(x)
+    def _evaluate(self, cols, batch):
         with np.errstate(all="ignore"):
             outs = self.kernel(_ValueOps, cols)
-        y = np.zeros((x.shape[0], 4), np.complex128)
+        y = np.zeros((batch, 4), np.complex128)
         for k, o in enumerate(outs):
             y[:, k] = o
         return y
 
-    def forward_with_cache(self, x):
-        return self(x), x
-
-    def vjp_from_cache(self, cache, ct):
-        return self.vjp(cache, ct)
-
-    def vjp(self, x, ct):
+    def __call__(self, x):
         x, cols = self._columns(x)
-        ct = np.asarray(ct, dtype=np.complex128)
-        duals = [Dual(c, {i: 1.0}) for i, c in enumerate(cols)]
+        return self._evaluate(cols, x.shape[0])
+
+    def forward_with_cache(self, x, columns=None):
+        """Batched forward and a cache for `vjp_from_cache`.
+
+        With `columns` (bool per input), the kernel is evaluated once with dual numbers for
+        those inputs: the values are bit-identical to the plain evaluation (every dual
+        operation computes its value with the plain expression), and the partials are kept,
+        so the VJP is a contraction instead of a second evaluation.
+        """
+        x, cols = self._columns(x)
+        if columns is None:
+            return self._evaluate(cols, x.shape[0]), (cols, x.shape)
+        duals = [Dual(c, {i: 1.0}) if columns[i] else c for i, c in enumerate(cols)]
         with np.errstate(all="ignore"):
             outs = self.kernel(_DualOps, duals)
-        g = np.zeros(x.shape, np.complex128)
+        y = np.zeros((x.shape[0], 4), np.complex128)
+        for k, o in enumerate(outs):
+            y[:, k] = o.v if isinstance(o, Dual) else o
+        return y, (_Partials(outs, tuple(bool(c) for c in columns)), x.shape)
+
+    def vjp_from_cache(self, cache, ct, columns=None):
+        first, shape = cache
+        if isinstance(first, _Partials):
+            if columns is not None and tuple(bool(c) for c in columns) != first.columns:
+                raise ValueError("cached partials were computed for other columns")
+            return self._contract(first.outs, shape, np.asarray(ct, dtype=np.complex128))
+        return self._vjp(first, shape, ct, columns)
+
+    def vjp(self, x, ct, columns=None):
+        """Batched VJP. `columns` (optional, bool per input) limits the cotangent to those inputs.
+
+        Partials are tracked per input column and never mix, so the returned cotangent of a
+        selected column is exactly the unrestricted one; unselected columns get zero.
+        """
+        x, cols = self._columns(x)
+        return self._vjp(cols, x.shape, ct, columns)
+
+    def _vjp(self, cols, shape, ct, columns):
+        ct = np.asarray(ct, dtype=np.complex128)
+        duals = [Dual(c, {i: 1.0}) if columns is None or columns[i] else c for i, c in enumerate(cols)]
+        with np.errstate(all="ignore"):
+            outs = self.kernel(_DualOps, duals)
+        return self._contract(outs, shape, ct)
+
+    @staticmethod
+    def _contract(outs, shape, ct):
+        g = np.zeros(shape, np.complex128)
         for k, o in enumerate(outs):
             if not isinstance(o, Dual):
                 continue
@@ -346,6 +393,33 @@ class NativeFunction:
             for i, d in o.b.items():
                 g[:, i] += np.conj(d * ck)
         return g
+
+
+class IdentityLink:
+    """Host version of `build.identity_link` (x -> x on complex scalars, batched).
+
+    Same interface as host.TracedFunction for a () -> () complex function. As in JAX, the VJP of
+    the identity passes the cotangent through unchanged.
+    """
+
+    out_shape = ()
+    out_dtype = np.dtype(np.complex128)
+    unsupported = frozenset()
+
+    def __call__(self, x):
+        return np.asarray(x, dtype=np.complex128)
+
+    def vjp(self, x, ct):
+        return np.asarray(ct, dtype=np.complex128)
+
+
+def native_link(function):
+    """Host implementation of a built-in linking function, else None (traced with JAX)."""
+    from differometor.build import identity_link
+    import os
+    if os.environ.get("DIFFEROMETOR_KERNELS", "all") == "none":
+        return None
+    return IdentityLink() if function is identity_link else None
 
 
 def native_function(function):

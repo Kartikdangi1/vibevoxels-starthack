@@ -12,7 +12,8 @@ from differometor.components import FUNCTIONS
 from differometor.native_kernels import native_function
 
 # native_kernels.py re-expresses components.py by hand: any edit there must be mirrored and this hash updated.
-COMPONENTS_SHA256 = "43de638ee61fc951ebd013dceaec8960d6aa5a58d7c4b96d1d45c4425731f1d8"
+# (Last update: detector shape shortcut only; no component function changed.)
+COMPONENTS_SHA256 = "0d94dbd4606bd09a28a466513670bdd3741b11a1445c8b652d1dd2d69a03e2e5"
 failures = 0
 with open(_components.__file__, "rb") as f:
     if hashlib.sha256(f.read()).hexdigest() != COMPONENTS_SHA256:

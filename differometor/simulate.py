@@ -437,6 +437,29 @@ def simulate_dense(
 from collections import OrderedDict
 
 
+class gc_paused:
+    """Pause Python's cyclic garbage collector inside a block (restores the previous state).
+
+    The host passes allocate many short-lived objects and would trigger collections that
+    traverse every live object in the process (JAX's included), although they create no
+    garbage cycles that need collecting now. Collection resumes, unchanged, after the block.
+    """
+
+    __slots__ = ("_was_enabled",)
+
+    def __enter__(self):
+        import gc
+        self._was_enabled = gc.isenabled()
+        gc.disable()
+        return self
+
+    def __exit__(self, *exc):
+        if self._was_enabled:
+            import gc
+            gc.enable()
+        return False
+
+
 def _compress(base, write_sets):
     """Map each structurally relevant (row, col) of `base` to a flat index.
 
@@ -463,12 +486,13 @@ def _matrix_first(r, c, v, ks, n):
 
 
 def _put(x, dtype=None):
+    """Host array as it will be placed on the device (compress_arrays transfers all at once)."""
     if x is None:
         return None
     a = np.asarray(x, dtype=dtype)
     if dtype is None and np.issubdtype(a.dtype, np.integer) and a.dtype != np.int64 and a.dtype != np.int8:
         a = a.astype(np.int64)
-    return jax.device_put(np.ascontiguousarray(a))
+    return np.ascontiguousarray(a)
 
 
 def _group_functions(function_input_indices, function_indices, output_indices, flat_indices, swept):
@@ -481,25 +505,35 @@ def _group_functions(function_input_indices, function_indices, output_indices, f
     fin = np.asarray(function_input_indices).reshape(-1, np.asarray(function_input_indices).shape[-1]) \
         if np.asarray(function_input_indices).size else np.zeros((0, 7), np.int64)
     fidx = np.asarray(function_indices).reshape(-1)
-    out = np.asarray(output_indices).reshape(2, -1)
+    out = np.asarray(output_indices).reshape(2, -1).astype(np.int64)  # integral (may arrive as float)
     k = np.asarray(flat_indices).reshape(-1)
     # keep only the last write to each flat index
     _, last = np.unique(k[::-1], return_index=True)
     keep = np.sort(k.size - 1 - last)
     out, k = out[:, keep], k[keep]
     varying = np.isin(fin, np.asarray(swept)).any(axis=1) if fin.size else np.zeros(0, bool)
+    # Group key of every function row (function index, varying) and its rank within the group
+    # (rows of a group in ascending order), so each write finds its group and local row directly.
+    row_key = fidx.astype(np.int64) * 2 + varying
+    order = np.argsort(row_key, kind="stable")
+    sorted_keys = row_key[order]
+    starts = np.searchsorted(sorted_keys, sorted_keys, side="left")
+    rank = np.empty(row_key.size, np.int64)
+    rank[order] = np.arange(row_key.size) - starts
+    entry_key = row_key[out[0]] if out.shape[1] else np.zeros(0, np.int64)
     groups = {}
     for g in np.unique(fidx):
         for tag in ("c", "v"):
-            rows_g = np.nonzero((fidx == g) & (varying == (tag == "v")))[0]
-            if rows_g.size == 0:
+            key = int(g) * 2 + (tag == "v")
+            lo, hi = np.searchsorted(sorted_keys, [key, key + 1])
+            if hi == lo:
                 continue
-            sel = np.isin(out[0], rows_g)
+            sel = entry_key == key
             if not sel.any():
                 continue
-            local = np.searchsorted(rows_g, out[0, sel])
+            rows_g = np.sort(order[lo:hi])
             groups[f"{tag}{int(g):02d}"] = dict(
-                inputs=_put(fin[rows_g], np.int64), rows=_put(local, np.int64),
+                inputs=_put(fin[rows_g], np.int64), rows=_put(rank[out[0, sel]], np.int64),
                 slots=_put(out[1, sel], np.int64), k=_put(k[sel], np.int64),
             )
     return groups
@@ -559,7 +593,65 @@ def compress_arrays(arrays):
     # Static record (dict keys) of which LINKING_FUNCTIONS this setup uses.
     out["linking_function_ids"] = {f"l{int(i)}": _put(np.zeros(0, np.int8), np.int8)
                                    for i in np.unique(np.asarray(a["linking_function_indices"]))}
-    return {**{key: _put(a[key]) for key in keep}, **out}
+    system = {**{key: _put(a[key]) for key in keep if key != "optimized_parameters"}, **out}
+    # One batched transfer for everything.
+    return jax.device_put({"optimized_parameters": _put(a["optimized_parameters"]),
+                           "system": PackedArrays.pack(system)})
+
+
+@jax.tree_util.register_pytree_node_class
+class PackedArrays:
+    """The compressed simulation arrays (about 100), packed into one flat buffer per dtype.
+
+    `simulate` receives these few buffers instead of about 100 separate arrays. That makes
+    tracing, lowering and every call cheaper: jit arguments, and the operands of the host
+    callback. The layout (pytree structure, buffer, offset and shape of every array) is static
+    pytree data. `unpack()` returns the original nested dict as slices of the buffers; for
+    NumPy buffers these are views. It works for NumPy arrays, JAX arrays and tracers.
+    """
+
+    __slots__ = ("buffers", "layout")
+
+    def __init__(self, buffers, layout):
+        self.buffers = tuple(buffers)
+        self.layout = layout  # (treedef, ((buffer, offset, shape), ...), dtype strings)
+
+    def tree_flatten(self):
+        return self.buffers, self.layout
+
+    @classmethod
+    def tree_unflatten(cls, layout, buffers):
+        return cls(buffers, layout)
+
+    @classmethod
+    def pack(cls, tree):
+        leaves, treedef = jax.tree_util.tree_flatten(tree)
+        leaves = [np.asarray(leaf) for leaf in leaves]
+        dtypes = sorted({leaf.dtype.str for leaf in leaves})
+        parts = {d: [] for d in dtypes}
+        sizes = dict.fromkeys(dtypes, 0)
+        entries = []
+        for leaf in leaves:
+            d = leaf.dtype.str
+            entries.append((dtypes.index(d), sizes[d], tuple(leaf.shape)))
+            parts[d].append(leaf.reshape(-1))
+            sizes[d] += leaf.size
+        buffers = [np.concatenate(parts[d]) if parts[d] else np.zeros(0, d) for d in dtypes]
+        return cls(buffers, (treedef, tuple(entries), tuple(dtypes)))
+
+    def unpack(self):
+        treedef, entries, _ = self.layout
+        leaves = []
+        for b, offset, shape in entries:
+            size = int(np.prod(shape, dtype=np.int64))
+            leaves.append(self.buffers[b][offset:offset + size].reshape(shape))
+        return jax.tree_util.tree_unflatten(treedef, leaves)
+
+    def shapes(self):
+        """The nested dict of jax.ShapeDtypeStruct (static: no slicing of the buffers)."""
+        treedef, entries, dtypes = self.layout
+        return jax.tree_util.tree_unflatten(
+            treedef, [jax.ShapeDtypeStruct(shape, np.dtype(dtypes[b])) for b, _, shape in entries])
 
 
 # ---------------------------------------------------------------- host solver
@@ -743,22 +835,13 @@ def simulate_sparse_jax(
 
 
 
-def simulate(
-    # prepared arrays
-    optimized_parameters, optimized_parameter_indices, optimized_value_indices,
-    carrier_changing_parameter_indices, carrier_changing_values,
-    signal_changing_parameter_indices, signal_changing_values,
-    parameters, noise_selection_vectors, qhd_parameter_indices, qhd_placing_indices,
-    linked_indices, linking_function_indices, indices_to_link, signal_carrier_indices, linking_function_ids,
-    # compressed carrier system
-    carrier_values, carrier_rows, carrier_cols, carrier_rhs_rows, carrier_size_marker, carrier_groups,
-    # compressed signal system
-    signal_values, signal_rows, signal_cols, signal_rhs_rows, signal_place_k, signal_conj_mask, signal_groups,
-    # compressed noise source matrix
-    noise_values, noise_rows, noise_cols, noise_groups,
-):
+def simulate(optimized_parameters=None, system=None, **arrays):
     """
     Run one full simulation pass (carrier, signal, quantum noise) on compressed arrays.
+
+    Called as `simulate(**simulation_arrays)` with the dict from `run_build_step`, i.e.
+    `optimized_parameters` and `system` (a `PackedArrays`). The compressed arrays may also be
+    passed individually by name (the arguments of `simulate_sparse_jax`) instead of `system`.
 
     By default the whole pass executes on the host (NumPy/SciPy SuperLU) inside a
     single custom VJP (see `differometor.host`), which removes nearly all XLA
@@ -771,13 +854,16 @@ def simulate(
     and the benchmark require. Use DIFFEROMETOR_BACKEND=jax for gradients with
     respect to other inputs.
     """
-    arrays = dict(locals())
+    if system is not None and arrays:
+        raise TypeError("pass either `system` or the individual compressed arrays, not both")
+    source = system if system is not None else arrays
     if os.environ.get("DIFFEROMETOR_BACKEND", "host") != "jax":
         from differometor.host import make_host_simulate
-        host_simulate, _ = make_host_simulate(arrays)
+        host_simulate, _ = make_host_simulate(source)
         if host_simulate is not None:
             return host_simulate(optimized_parameters)
-    return simulate_sparse_jax(**arrays)
+    unpacked = system.unpack() if system is not None else arrays
+    return simulate_sparse_jax(optimized_parameters=optimized_parameters, **unpacked)
 
 
 def run_build_step(
@@ -826,7 +912,11 @@ def run_build_step(
     The returned dictionary keys are derived from the `simulate` function signature.
     """
     start = time()
+    with gc_paused():
+        return _run_build_step(setup, changing_pairs, changing_values, optimization_pairs, timeit, start)
 
+
+def _run_build_step(setup, changing_pairs, changing_values, optimization_pairs, timeit, start):
     instructions, matrices, metadata = build(setup)
     arrays_to_prepare, carrier_arrays, signal_arrays, noise_arrays = pairs_to_arrays(
         *instructions, optimization_pairs, changing_pairs

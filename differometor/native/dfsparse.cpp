@@ -20,6 +20,13 @@
 #include <limits>
 #include <vector>
 #include <algorithm>
+#include <memory>
+#include <cstdlib>
+#include <mutex>
+#include <new>
+#ifdef __linux__
+#include <sys/mman.h>
+#endif
 
 namespace {
 
@@ -271,6 +278,220 @@ bool refactor_one(LU& f, const LU& ref, const int* colptr, const int* rowind, co
     return true;
 }
 
+// ---------------------------------------------------------------- batched (SIMD across systems)
+// Wang et al. (arXiv:2101.02270) batch many same-pattern systems so that every sparse update is
+// one vector instruction across systems. Here up to LANES frequencies are refactorised together
+// with the pivot order and L/U pattern of a pivoted reference system (KLU-style reuse), and
+// are also *solved* together: values live lane-interleaved (entry-major, system-minor, real and
+// imaginary parts separately) and are never unpacked, so a group shares one copy of the pattern.
+// Per lane the arithmetic is that of refactor_one / solve_one, except that divisions by a pivot
+// are multiplications by its (scaled) reciprocal.
+constexpr int LANES = 8;
+
+// 64-byte aligned storage for lane-interleaved vectors, so that a vector of LANES doubles never
+// straddles two cache lines.
+template <class T>
+struct AlignedAllocator {
+    using value_type = T;
+    AlignedAllocator() = default;
+    template <class U>
+    AlignedAllocator(const AlignedAllocator<U>&) {}
+    T* allocate(size_t n) {
+        const size_t bytes = (n * sizeof(T) + 63) / 64 * 64;
+        void* p = std::aligned_alloc(64, bytes ? bytes : 64);
+        if (!p) throw std::bad_alloc();
+        return static_cast<T*>(p);
+    }
+    void deallocate(T* p, size_t) { std::free(p); }
+    template <class U>
+    bool operator==(const AlignedAllocator<U>&) const { return true; }
+    template <class U>
+    bool operator!=(const AlignedAllocator<U>&) const { return false; }
+};
+using LaneVec = std::vector<double, AlignedAllocator<double>>;
+
+
+struct Buf {  // uninitialised double array, owned or a slice of the batch's arena
+    std::unique_ptr<double[]> own;
+    double* ptr = nullptr;
+    size_t size = 0;
+    void alloc(size_t n) { if (n > size) { own.reset(new double[n]); ptr = own.get(); size = n; } }
+    void attach(double* p, size_t n) { own.reset(); ptr = p; size = n; }
+    double* data() { return ptr; }
+    const double* data() const { return ptr; }
+};
+
+// One allocation for all groups' values. Fresh memory is first touched while the values are
+// written; with transparent huge pages (madvise mode on Linux) that is a few 2 MB faults
+// instead of thousands of 4 KB ones.
+// The most recently released arena is kept for the next factorisation (repeated evaluations
+// then reuse memory that is already mapped); every value is written before it is read.
+std::mutex spare_mutex;
+void* spare_arena = nullptr;
+size_t spare_bytes = 0;
+
+struct Arena {
+    double* base = nullptr;
+    size_t size = 0, used = 0, bytes = 0;
+    void reserve(size_t doubles) {
+        const size_t huge = size_t(1) << 21;
+        const size_t want = (doubles * sizeof(double) + huge - 1) / huge * huge;
+        void* p = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(spare_mutex);
+            if (spare_arena && spare_bytes >= want) {
+                p = spare_arena;
+                bytes = spare_bytes;
+                spare_arena = nullptr;
+            }
+        }
+        if (!p) {
+            p = std::aligned_alloc(huge, want);
+            if (!p) return;
+            bytes = want;
+#ifdef __linux__
+            madvise(p, bytes, MADV_HUGEPAGE);
+#endif
+        }
+        base = static_cast<double*>(p);
+        size = bytes / sizeof(double);
+        used = 0;
+    }
+    double* take(size_t doubles) {
+        doubles = (doubles + 7) / 8 * 8;
+        if (!base || used + doubles > size) return nullptr;
+        double* p = base + used;
+        used += doubles;
+        return p;
+    }
+    ~Arena() {
+        if (!base) return;
+        void* release = base;
+        {
+            std::lock_guard<std::mutex> lock(spare_mutex);
+            if (!spare_arena || spare_bytes < bytes) {
+                std::swap(release, spare_arena);
+                spare_bytes = bytes;
+            }
+        }
+        std::free(release);  // the smaller of the two, or nothing
+    }
+};
+
+struct Group {
+    int ref = -1;            // system whose LU provides the pattern and pivot order
+    int first = 0, lanes = 0;
+    bool ok[LANES] = {};     // lane passed the pivot check (else that system has its own LU)
+    Buf lr, li, ur, ui;      // L and U values, (nnz, LANES)
+    Buf dr, di;              // reciprocal of the U diagonal, (n, LANES)
+    Buf ar, ai;              // the systems' A values, (nnz(A), LANES), for refinement residuals
+};
+
+inline void recip(double re, double im, double& rr, double& ri) {
+    const double s = std::fmax(std::fabs(re), std::fabs(im));
+    const double a = re / s, b = im / s;
+    const double den = s * (a * a + b * b);
+    rr = a / den;
+    ri = -b / den;
+}
+
+// ---------------------------------------------------------------- lane kernels per instruction set
+// The kernels are compiled for the baseline target and, on x86-64 with GCC/Clang, also for AVX2+FMA
+// and AVX-512F; the best one the CPU supports is chosen at run time. FMA contraction is off
+// (build.py: -ffp-contract=off), so every variant computes bit-identical results.
+// DIFFEROMETOR_NATIVE_ISA=generic|avx2|avx512 forces one (if supported).
+#define DFS_CMUL_FMA 0
+namespace lanes_generic {
+#include "dfsparse_lanes.h"
+}
+#undef DFS_CMUL_FMA
+#define DFS_CMUL_FMA 1
+
+#if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
+#define DFS_X86_DISPATCH 1
+#if defined(__clang__)
+#pragma clang attribute push(__attribute__((target("avx2,fma"))), apply_to = function)
+#else
+#pragma GCC push_options
+#pragma GCC target("avx2,fma")
+#endif
+namespace lanes_avx2 {
+#include "dfsparse_lanes.h"
+}
+#if defined(__clang__)
+#pragma clang attribute pop
+#pragma clang attribute push(__attribute__((target("avx512f,avx2,fma"))), apply_to = function)
+#else
+#pragma GCC pop_options
+#pragma GCC push_options
+#pragma GCC target("avx512f,avx2,fma")
+#endif
+namespace lanes_avx512 {
+#include "dfsparse_lanes.h"
+}
+#if defined(__clang__)
+#pragma clang attribute pop
+#else
+#pragma GCC pop_options
+#endif
+#endif
+
+struct LaneKernels {
+    decltype(&lanes_generic::refactor_lanes) refactor;
+    decltype(&lanes_generic::solve_lanes) solve;
+    decltype(&lanes_generic::residual_lanes) residual;
+    decltype(&lanes_generic::adjoint_entries) adjoint;
+    int level;  // 0 generic, 1 avx2, 2 avx512
+};
+
+#ifdef DFS_X86_DISPATCH
+// CPUID/XGETBV directly (not __builtin_cpu_supports, which some toolchains, e.g. zig's, leave
+// unimplemented). A feature counts only if the OS also saves the corresponding register state.
+void cpuid(unsigned leaf, unsigned sub, unsigned r[4]) {
+    __asm__ volatile("cpuid" : "=a"(r[0]), "=b"(r[1]), "=c"(r[2]), "=d"(r[3]) : "a"(leaf), "c"(sub));
+}
+int x86_level() {  // 0 baseline, 1 AVX2+FMA, 2 AVX-512F
+    unsigned r[4];
+    cpuid(0, 0, r);
+    const unsigned max_leaf = r[0];
+    if (max_leaf < 7) return 0;
+    cpuid(1, 0, r);
+    const bool osxsave = (r[2] >> 27) & 1, avx = (r[2] >> 28) & 1, fma = (r[2] >> 12) & 1;
+    if (!(osxsave && avx && fma)) return 0;
+    unsigned lo, hi;
+    __asm__ volatile("xgetbv" : "=a"(lo), "=d"(hi) : "c"(0));
+    const unsigned long long xcr0 = (static_cast<unsigned long long>(hi) << 32) | lo;
+    if ((xcr0 & 0x6) != 0x6) return 0;  // SSE and AVX state
+    cpuid(7, 0, r);
+    const bool avx2 = (r[1] >> 5) & 1, avx512f = (r[1] >> 16) & 1;
+    if (!avx2) return 0;
+    return (avx512f && (xcr0 & 0xE6) == 0xE6) ? 2 : 1;  // + opmask, ZMM_Hi256, Hi16_ZMM state
+}
+#endif
+
+LaneKernels choose_kernels() {
+    const LaneKernels generic = {lanes_generic::refactor_lanes, lanes_generic::solve_lanes,
+                                 lanes_generic::residual_lanes, lanes_generic::adjoint_entries, 0};
+#ifdef DFS_X86_DISPATCH
+    const char* want = std::getenv("DIFFEROMETOR_NATIVE_ISA");
+    const bool any = !want || !*want;
+    const int level = x86_level();
+    const bool avx2 = level >= 1;
+    const bool avx512 = level >= 2;
+    if (avx512 && (any || std::strcmp(want, "avx512") == 0))
+        return {lanes_avx512::refactor_lanes, lanes_avx512::solve_lanes, lanes_avx512::residual_lanes,
+                lanes_avx512::adjoint_entries, 2};
+    if (avx2 && (any || std::strcmp(want, "avx2") == 0 || std::strcmp(want, "avx512") == 0))
+        return {lanes_avx2::refactor_lanes, lanes_avx2::solve_lanes, lanes_avx2::residual_lanes,
+                lanes_avx2::adjoint_entries, 1};
+#endif
+    return generic;
+}
+
+const LaneKernels& kernels() {
+    static const LaneKernels k = choose_kernels();
+    return k;
+}
 // ---------------------------------------------------------------- solves
 // All vectors are dense length n, in pivot coordinates where noted.
 void lsolve(const LU& f, cplx* x) {  // L x = b (unit diagonal)
@@ -354,7 +575,10 @@ struct Batch {
     int n = 0, F = 0, nnz = 0;
     std::vector<int> colptr, rowind, q;
     std::vector<cplx> values;  // (F, nnz) CSC order
-    std::vector<LU> lus;
+    std::vector<LU> lus;              // systems with their own factorisation
+    std::vector<Group> groups;        // systems refactorised together (SIMD across systems)
+    std::vector<int> group_of;        // group index of system f, or -1 if lus[f] holds its LU
+    Arena arena;                      // storage for the groups' values
     int refactored = 0;
 };
 
@@ -362,15 +586,27 @@ struct Batch {
 
 extern "C" {
 
-int dfs_version() { return 1; }
+int dfs_version() { return 2; }
 
-// Factorise F systems sharing one CSC pattern. values: (F, nnz) complex128, CSC order.
+// Instruction set of the lane kernels in use: 0 generic, 1 AVX2+FMA, 2 AVX-512F.
+int dfs_isa() { return kernels().level; }
+
+// See adjoint_entries in dfsparse_lanes.h.
+void dfs_adjoint_entries(int F, int nnz, int n, int D, const long long* sr, const long long* sc, const double* bb,
+                         const double* x, const double* w, const double* y, double* out, long long out_stride) {
+    kernels().adjoint(F, nnz, n, D, sr, sc, bb, x, w, y, out, out_stride);
+}
+
+// Factorise F systems sharing one CSC pattern. values: complex128, system f's entries start at
+// values + 2 * f * stride (stride in complex elements). Entry p of the CSC order is perm[p] of
+// a system's entries, or entry p itself if perm is null.
 // order: 0 = natural, 1 = minimum degree on A + A^T, 2 = minimum degree on A^T A. tol: diagonal pivot threshold (1 = partial pivoting).
 // singular_out[f] = 1 if system f is singular. Returns an opaque handle.
 // reuse: 1 = refactorise systems 1..F-1 with the previous pivot order when every reused pivot is
-// at least reuse_tol times the largest candidate in its column (else pivot that system afresh).
-void* dfs_factor(int n, int F, const int* colptr, const int* rowind, const double* values,
-                 int order, double tol, int reuse, double reuse_tol, int* singular_out) {
+// at least reuse_tol times the largest candidate in its column (else pivot that system afresh);
+// 2 = the same, LANES systems at a time with SIMD across systems (refactor_lanes).
+void* dfs_factor(int n, int F, const int* colptr, const int* rowind, const double* values, long long stride,
+                 const int* perm, int order, double tol, int reuse, double reuse_tol, int* singular_out) {
     auto* b = new Batch;
     b->n = n;
     b->F = F;
@@ -378,7 +614,15 @@ void* dfs_factor(int n, int F, const int* colptr, const int* rowind, const doubl
     b->colptr.assign(colptr, colptr + n + 1);
     b->rowind.assign(rowind, rowind + b->nnz);
     b->values.resize(static_cast<size_t>(F) * b->nnz);
-    std::memcpy(b->values.data(), values, sizeof(cplx) * b->values.size());
+    for (int f = 0; f < F; ++f) {  // gather into CSC order (one pass; no copy on the Python side)
+        const cplx* src = reinterpret_cast<const cplx*>(values) + static_cast<size_t>(f) * stride;
+        cplx* dst = b->values.data() + static_cast<size_t>(f) * b->nnz;
+        if (perm) {
+            for (int p = 0; p < b->nnz; ++p) dst[p] = src[perm[p]];
+        } else {
+            std::memcpy(dst, src, sizeof(cplx) * b->nnz);
+        }
+    }
     if (order == 1 || order == 2) {
         b->q = minimum_degree(n, colptr, rowind, order == 2);
     } else {
@@ -392,24 +636,78 @@ void* dfs_factor(int n, int F, const int* colptr, const int* rowind, const doubl
     size_t lnz = 4 * static_cast<size_t>(b->nnz), unz = lnz;
     int ref = -1;  // last pivoted factorisation, whose pivot order the next systems reuse
     b->refactored = 0;
-    for (int f = 0; f < F; ++f) {
+    auto pivot_afresh = [&](int f, bool update_ref = true) {
         LU& lu = b->lus[f];
-        const cplx* vals = b->values.data() + static_cast<size_t>(f) * b->nnz;
-        if (reuse && ref >= 0 &&
-            refactor_one(lu, b->lus[ref], b->colptr.data(), b->rowind.data(), vals, b->q, reuse_tol, xr)) {
-            ++b->refactored;
-            singular_out[f] = 0;
-            continue;
-        }
-        factor_one(lu, n, b->colptr.data(), b->rowind.data(), vals, b->q, tol, w, lnz, unz);
+        factor_one(lu, n, b->colptr.data(), b->rowind.data(), b->values.data() + static_cast<size_t>(f) * b->nnz,
+                   b->q, tol, w, lnz, unz);
         if (lu.singular) {
             w.resize(n);  // workspace may hold partial state
         } else {
             lnz = lu.Li.size() + lu.Li.size() / 8;
             unz = lu.Ui.size() + lu.Ui.size() / 8;
-            ref = f;
+            if (update_ref) ref = f;
         }
         singular_out[f] = lu.singular ? 1 : 0;
+    };
+    LaneVec lane_xr, lane_xi;
+    b->group_of.assign(F, -1);
+    b->groups.reserve(F / LANES + 1);
+    int f = 0;
+    while (f < F) {
+        if (!reuse || ref < 0) {
+            pivot_afresh(f++);
+            continue;
+        }
+        if (reuse == 2 && F - f >= 2) {  // batched: up to LANES systems per pass
+            const int lanes = std::min(LANES, F - f);
+            b->groups.emplace_back();
+            Group& g = b->groups.back();
+            g.ref = ref; g.first = f; g.lanes = lanes;
+            {
+                const LU& r = b->lus[ref];
+                const size_t W = LANES, nl = r.Li.size(), nu = r.Ui.size(), nn = n, na = b->nnz;
+                if (!b->arena.base) {
+                    const size_t per_group = W * (2 * nl + 2 * nu + 2 * nn + 2 * na) + 64;
+                    b->arena.reserve(per_group * static_cast<size_t>((F - f + LANES - 1) / LANES));
+                }
+                const size_t sizes[8] = {nl * W, nl * W, nu * W, nu * W, nn * W, nn * W, na * W, na * W};
+                Buf* bufs[8] = {&g.lr, &g.li, &g.ur, &g.ui, &g.dr, &g.di, &g.ar, &g.ai};
+                for (int i = 0; i < 8; ++i)
+                    if (double* p = b->arena.take(sizes[i])) bufs[i]->attach(p, sizes[i]);
+            }
+            const cplx* vals[LANES];
+            for (int l = 0; l < LANES; ++l)
+                vals[l] = b->values.data() + static_cast<size_t>(f + (l < lanes ? l : 0)) * b->nnz;
+            kernels().refactor(b->lus[ref], b->colptr.data(), b->rowind.data(), vals, b->q, reuse_tol, g, lane_xr,
+                           lane_xi);
+            const int gi = static_cast<int>(b->groups.size()) - 1;
+            int failed = 0, last_fresh = -1;
+            for (int l = 0; l < lanes; ++l) {
+                if (g.ok[l]) {
+                    b->group_of[f + l] = gi;
+                    ++b->refactored;
+                    singular_out[f + l] = 0;
+                } else {
+                    // this system gets its own pivoted LU; an isolated outlier does not become the
+                    // reference for later groups, but if most lanes failed the pivot order has drifted
+                    pivot_afresh(f + l, false);
+                    ++failed;
+                    if (!b->lus[f + l].singular) last_fresh = f + l;
+                }
+            }
+            if (2 * failed > lanes && last_fresh >= 0) ref = last_fresh;
+            f += lanes;
+            continue;
+        }
+        LU& lu = b->lus[f];
+        const cplx* vals = b->values.data() + static_cast<size_t>(f) * b->nnz;
+        if (refactor_one(lu, b->lus[ref], b->colptr.data(), b->rowind.data(), vals, b->q, reuse_tol, xr)) {
+            ++b->refactored;
+            singular_out[f] = 0;
+            ++f;
+            continue;
+        }
+        pivot_afresh(f++);
     }
     return b;
 }
@@ -420,7 +718,10 @@ int dfs_refactored(void* handle) { return static_cast<Batch*>(handle)->refactore
 void dfs_stats(void* handle, long long* lnz, long long* unz) {
     auto* b = static_cast<Batch*>(handle);
     *lnz = 0; *unz = 0;
-    for (auto& lu : b->lus) { *lnz += lu.Li.size(); *unz += lu.Ui.size(); }
+    for (int f = 0; f < b->F; ++f) {
+        const LU& lu = b->group_of[f] >= 0 ? b->lus[b->groups[b->group_of[f]].ref] : b->lus[f];
+        *lnz += lu.Li.size(); *unz += lu.Ui.size();
+    }
 }
 
 // Solve op(A_f) X_f = B_f for every system f. rhs: (F, n, k) complex128, C order, overwritten
@@ -432,6 +733,7 @@ void dfs_solve(void* handle, int trans, int k, double* rhs, int refine) {
     cplx* data = reinterpret_cast<cplx*>(rhs);
     const double nan = std::numeric_limits<double>::quiet_NaN();
     for (int f = 0; f < b->F; ++f) {
+        if (b->group_of[f] >= 0) continue;  // solved with its group below
         const LU& lu = b->lus[f];
         const cplx* vals = b->values.data() + static_cast<size_t>(f) * b->nnz;
         cplx* block = data + static_cast<size_t>(f) * n * k;
@@ -448,6 +750,37 @@ void dfs_solve(void* handle, int trans, int k, double* rhs, int refine) {
                 for (int i = 0; i < n; ++i) x[i] = x[i] + d[i];
             }
             for (int i = 0; i < n; ++i) block[static_cast<size_t>(i) * k + c] = x[i];
+        }
+    }
+    if (b->groups.empty()) return;
+    constexpr int W = LANES;
+    const size_t len = static_cast<size_t>(n) * W;
+    LaneVec buf(10 * len);
+    double *br = buf.data(), *bi = br + len, *xr = bi + len, *xi = xr + len, *tr = xi + len, *ti = tr + len,
+           *rr = ti + len, *ri = rr + len, *dr = ri + len, *di = dr + len;
+    for (const Group& g : b->groups) {
+        const LU& ref = b->lus[g.ref];
+        for (int c = 0; c < k; ++c) {
+            for (int i = 0; i < n; ++i)
+                for (int l = 0; l < W; ++l) {
+                    const cplx v = (l < g.lanes && g.ok[l])
+                                       ? data[(static_cast<size_t>(g.first + l) * n + i) * k + c]
+                                       : cplx{0, 0};
+                    br[static_cast<size_t>(i) * W + l] = v.re;
+                    bi[static_cast<size_t>(i) * W + l] = v.im;
+                }
+            kernels().solve(ref, g, b->q, trans, br, bi, xr, xi, tr, ti);
+            for (int s = 0; s < refine; ++s) {
+                kernels().residual(n, b->colptr.data(), b->rowind.data(), g, trans, br, bi, xr, xi, rr, ri);
+                kernels().solve(ref, g, b->q, trans, rr, ri, dr, di, tr, ti);
+                for (size_t i = 0; i < len; ++i) { xr[i] += dr[i]; xi[i] += di[i]; }
+            }
+            for (int l = 0; l < g.lanes; ++l) {
+                if (!g.ok[l]) continue;
+                for (int i = 0; i < n; ++i)
+                    data[(static_cast<size_t>(g.first + l) * n + i) * k + c] = {xr[static_cast<size_t>(i) * W + l],
+                                                                                xi[static_cast<size_t>(i) * W + l]};
+            }
         }
     }
 }

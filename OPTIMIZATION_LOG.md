@@ -21,8 +21,12 @@ was run at least twice; all runs are listed.
 | E8 | VJP by transposing JAX's JVP program (cheaper tracing) | 0.591 / 0.632 | 0.13 | 5.374e-6 | INTEGRATED | 0c64f2b |
 | E9 | Challenger fixes: rank alignment, real cotangents, self-check, referenced links only | 0.616 / 0.647 / 0.732 | 0.12 | 5.374e-6 | INTEGRATED | bc8ad3c |
 | E10 | native C++ batched sparse LU (`differometor/native`), branch `cpp-implementation` | WSL i5: see E10 section | WSL i5: 0.26–0.28 → 0.14–0.16 | 5.374e-6 | CANDIDATE | — |
+| E13 | SIMD across systems in the native LU: 8 frequencies refactorised and solved per pass (arXiv:2101.02270), huge-page arena | WSL i5: cold factorisation 37.6 → 26.4 ms | WSL i5: ≈ −5 ms | 5.374e-6 | INTEGRATED (vectorised in E16) | — |
+| R3 | Round 3, E14–E26 (see "Round 3" below) | WSL i5: **1.043 → 0.687** (median of 5) | WSL i5: 0.133 → **0.067** | 5.374e-6 | INTEGRATED | — |
 
 Overall: **24.889 s → ~0.62 s (≈40×)** first run; warm 12.13 s → 0.12 s (≈100×).
+Round 3, same machine before and after (WSL i5-1145G7, `--cpus 1`): first run 1.043 → 0.687 s, warm
+0.133 → 0.067 s. Without `import jax`, which is the same in both: 0.646 → 0.292 s.
 The 5.374e-6 public error equals the upstream code's own error against the reference.
 
 ## E5 phase breakdown (run 3, 0.730 s)
@@ -162,6 +166,208 @@ forces SuperLU).
   `$CXX`, `c++`, `g++` or `clang++`, else the `ziglang` pip package. If no compiler is found, the
   install still succeeds and SuperLU is used. Nothing is compiled at run time.
 
+**E13 — SIMD across systems in the native LU (arXiv:2101.02270, Wang et al.).** That paper
+refactorises thousands of same-pattern power-flow systems and interleaves them so that every sparse
+update is one vector instruction across systems. `dfsparse.cpp` now does the same for the
+frequencies that reuse the reference pivot order.
+
+- **Layout.** 8 frequencies per group. L/U values are stored lane-interleaved (entry-major,
+  system-minor, real and imaginary parts separate) and are **never unpacked**: the solves, with
+  their refinement residuals, also run 8 systems at a time. A group shares one copy of the
+  pattern. Pivots are applied as scaled reciprocals.
+- **Per-lane safety.** The pivot check (≥ 0.1 × the column maximum) is applied per lane. A failing
+  or singular lane gets its own pivoted LU. An isolated outlier does not become the reference for
+  later groups; the reference only moves if most lanes of a group fail.
+  `scratch/test_simd_edges.py`:
+  - a singular frequency gives NaN for that frequency only;
+  - a perturbed frequency is re-pivoted (99/100 reuse, sequential mode gets 98/100);
+  - backward errors stay ≈ 1e-28, the same as SuperLU.
+- **Memory.** The first diagnosis was wrong: with the vectorised arithmetic the refactorisation
+  takes ≈ 9 ms, but unpacking 100 per-system LUs into fresh memory cost ≈ 12 ms. Keeping the lane
+  layout removed that cost. All groups' values (≈ 18 MB) then come from one 2 MB-aligned arena
+  marked `MADV_HUGEPAGE`: cold factorisation median 32.7 → 25.9 ms vs 4 KB pages.
+- **Results (WSL i5, cold first call in fresh processes, 8 alternating runs).** Factorisation
+  median **37.6 → 26.4 ms**; warm best 25.3 → 13.4 ms. Refined solves gain only ≈ 5 %: 101 systems'
+  factors (≈ 18 MB) exceed this laptop's 8 MB L3, so the solves are memory-bound. On the Xeon
+  (105 MB L3) they may gain more; not measured. `-march=native` made no difference. In the full
+  benchmark the ≈ 10 ms saving is below this machine's run-to-run noise.
+- **Accuracy.** Solutions differ from the sequential mode by ≤ 5e-10 relative (reciprocal vs
+  division, amplified by cond(A)). `tests/check_native_solver.py` is unchanged within noise;
+  benchmark |Δlog S| 5.374e-6, PASS.
+- **Switch.** `DIFFEROMETOR_NATIVE_SIMD=0` restores frequency-by-frequency refactorisation.
+
+## Round 3 (E14–E26): compile settings, vectorised solver, packed arrays, leaner host glue
+
+**Setup.** WSL2 Ubuntu on an i5-1145G7, repository and virtualenv on the ext4 file system (on
+`/mnt/c`, imports alone take 4 s), `taskset -c 5` with `benchmark.py --cpus 1`.
+- **Before:** the starting state of this round, i.e. HEAD plus its uncommitted E13 native code,
+  reconstructed with its original binary.
+- **Results:** 5 alternating fresh-process runs each, with `--repeats 3`. Official-style 10-repeat
+  reports are in [`results/round3-before-wsl-i5.json`](results/round3-before-wsl-i5.json) and
+  [`results/round3-after-wsl-i5.json`](results/round3-after-wsl-i5.json) (+ `.png`).
+
+| Phase (median of 5, ms) | before | after |
+|---|---:|---:|
+| imports (`import jax` etc.) | 397 | 395 |
+| build (incl. the benchmark's own `jnp.asarray`) | 103 | 80 |
+| forward lower + compile | 30 | 21 |
+| forward | 62 | 43 |
+| sensitivity lower + compile | 247 | 65 |
+| gradient lower + compile | 112 | 32 |
+| gradient | 68 | 29 |
+| **first-run total** | **1043** | **687** |
+| warm runtime (fwd + sens + grad) | 133 | 67 |
+
+An earlier batch measured 1.147 → 0.663 s; its imports differed by run-order noise.
+Single runs on this laptop vary by ±10 %. The two 10-repeat reports measured 1.36 and 1.01 s for
+the same "before" code. Outputs before vs after (`--save-arrays`):
+- carrier, signal, noise and powers: **bit-identical**;
+- sensitivity: 2.5e-17 relative (one ulp);
+- gradient: 9e-11 relative, which is the readout's one-ulp change amplified by the adjoint solves.
+
+Both sensitivity and gradient differences come only from E14. Every other change below is
+**bit-identical** on the benchmark, checked by comparing saved arrays after each step.
+
+**E14 — XLA compile settings (largest single gain).** With the work on the host, XLA compiles only
+small programs: callbacks plus the benchmark's elementwise readout. A probe showed the per-compile cost:
+- about 6 ms fixed, plus about 17–20 ms per generated kernel, almost all of it LLVM optimisation and
+  parallel codegen splitting;
+- a callback-only module compiles in about 8 ms.
+
+`differometor/__init__.py` therefore defaults
+`XLA_FLAGS += --xla_backend_optimization_level=0 --xla_cpu_use_fusion_emitters=false
+--xla_cpu_parallel_codegen_split_count=1`, effective before the JAX backend is initialised.
+- Sensitivity compile 0.20 → 0.03 s, gradient compile 0.09 → 0.02 s.
+- No fast-math. The legacy emitters round complex `abs`/divide differently in the last bit (above).
+- A flag the user already set in XLA_FLAGS wins. `DIFFEROMETOR_XLA_FAST_COMPILE=0` disables it.
+- The benchmark report records the flags (`environment.xla_flags`).
+- Eight further XLA flags were tried and gave nothing measurable: concurrency scheduler,
+  region-analysis copy insertion, thunk runtime, disabling expensive LLVM passes, xnnpack, max ISA,
+  vector width, emitter verification.
+
+**E15 — host glue without `np.add.at` and redundant work.**
+- Every complex `np.add.at` became one `np.bincount` per component (`host._scatter_add`). It
+  accumulates in the same order, so it is bit-identical.
+- Dual-number VJPs seed only input columns that can reach the gradient. Those are the optimized
+  parameters and the outputs of links whose input is optimized. The partials of the other columns
+  were computed and then discarded.
+- Final parameter scatters include only those entries.
+- `np.where` conjugation became in-place on the masked columns. A redundant `astype` copy was
+  dropped, and kernel input columns are made contiguous once.
+
+**E16 — the "SIMD across systems" loops were scalar; now vectorised, with ISA dispatch.** Clang
+reports showed the auto-vectoriser had rejected the per-lane loops of `refactor_lanes`,
+`solve_lanes` and `residual_lanes` ("not beneficial"): `mulsd`/`subsd` only. They now use explicit
+GCC/Clang vector types (8 doubles) and live in `native/dfsparse_lanes.h`. That header is compiled
+three times, for baseline x86-64, AVX2+FMA and AVX-512F. The best supported variant is chosen at
+run time via CPUID+XGETBV; zig's toolchain does not implement `__builtin_cpu_supports`.
+- Per-lane expressions are unchanged and `-ffp-contract=off` is set, so all variants give
+  bit-identical results.
+- `DIFFEROMETOR_NATIVE_ISA=generic|avx2|avx512` forces a variant.
+- Signal system, 101 frequencies: factorisation 19–23 → about 10 ms; each refined solve 5–7 →
+  about 3.3 ms (4 per evaluation).
+- A warm-arena measurement showed the old factorisation was compute-bound, not fault-bound:
+  47k update pairs per system took about 60 cycles each.
+
+**E17 — packed simulation arrays.** `run_build_step` returned about 100 arrays. Each became a jit
+argument and an operand of the host callback. 100 operands against 5 cost +3.5 ms lowering,
++5 ms compile and +5 ms *per call*. `compress_arrays` now packs them into one flat buffer per dtype,
+5 in total: `simulate.PackedArrays`, a registered pytree whose layout is static aux data.
+- The host callback receives 6 operands and unpacks them into zero-copy NumPy views.
+- The JAX fallback unpacks them with static slices.
+- `simulate(**arrays)` is unchanged for callers (`optimized_parameters`, `system`), and the compressed
+  arrays may still be passed individually.
+- Build 105 → 80 ms (includes one batched `device_put` instead of 98), forward lower 16 → 11,
+  forward compile 15 → 8, warm runtime −15 ms.
+
+**E18 — build step.**
+- One batched `device_put`.
+- `_group_functions` finds every write's group and local row from a stable rank instead of an
+  `np.isin` per (function, tag).
+- No dense `np.eye` temporaries or copies of the 9 MB matrices.
+- `len(set(...))` instead of `np.unique` on tiny arrays.
+- About −20 ms in total. The `run_build_step` output is **byte-identical** to before on 6 setups:
+  UIFO 800–3000 with and without optimization pairs, UIFO 20–5000, aLIGO, Voyager, cavity.
+  (`build.py` iterates a `set`, so its output order depends on `PYTHONHASHSEED`; compare with
+  equal seeds.)
+
+**E19 — placeholder link.** Without linked parameters, `build()` appended a fresh `lambda x: x`
+on every build, and the host plan traced and self-checked it with JAX. It is now
+`build.identity_link`, with a native host version.
+- Fixed bug: its index was hard-coded to 0 instead of its position in `LINKING_FUNCTIONS`. In a
+  process that had built a setup with real links, a later link-free build applied that setup's
+  function to parameter 0, the carrier frequency. The first build in a process is unchanged.
+
+**E20–E22 — small items.**
+- Detector result shapes are computed directly, without `jax.eval_shape`.
+- Python's cyclic GC is paused inside the host passes and the build. The previous state is restored
+  afterwards: `simulate.gc_paused`.
+- `dfs_factor` (ABI version 2) gathers the CSC values from a strided view, so Python makes no
+  permuted copy.
+- `setup.py` byte-compiles the source tree. pip does that for regular installs but not for
+  editable ones, so a first run would otherwise compile about 10k lines.
+
+**E23 — relevance excludes the placeholder.** The placeholder link writes parameter 0, which made
+parameter 0 "relevant". Every padded input column (index 0) of the space groups was then carried
+through Dual numbers and scattered as zeros: about 115k entries.
+
+**E24 — kernel partials kept from the forward.** The backward evaluated every signal-group kernel
+again with dual numbers.
+- Now the forward evaluates the relevant columns as dual numbers once and keeps the partials.
+- The VJP becomes a contraction. Gradient 44–50 → 39–40 ms.
+- Exactness required two fixes in `Dual`:
+  - `__rmul__` computes `o * v`. NumPy's FMA complex multiply,
+    `re = fma(ar, br, -ai*bi), im = fma(ar, bi, ai*br)`, is not bitwise commutative.
+  - `__pow__(2)` takes its value from `v ** 2`.
+- `tests/test_native_partials.py` asserts exact equality of values and VJPs for all 19 kernels,
+  real and complex inputs, and many column masks.
+
+**E25 — fused adjoint entries.**
+- `ct(A) = -bb[sr] x[sc] - Σ_d conj(w_d[sr]) y_d[sc]` is one native pass, `dfs_adjoint_entries`.
+  It uses NumPy's complex-multiply form on FMA targets, so it is bit-identical here.
+- It writes into the forward's `svals` buffer. The solver keeps its own copy of the values, and the
+  backward needs only the shape.
+- Temporary right-hand sides are solved in place.
+- Gradient 39 → 27–35 ms. On this machine first-touch page faults are expensive under WSL2, about
+  2.5 ms per fresh MB.
+
+**E26 — aligned lane workspaces, reused arena.**
+- The lane workspaces and solve buffers were `std::vector<double>`, only 16-byte aligned. Every
+  64-byte lane vector straddled two cache lines. They are now 64-byte aligned.
+- The most recently released factor arena (23 MB) is kept for the next factorisation. Every value
+  in it is written before it is read.
+- Warm factorisation 9.1 → 6.4 ms, refined solve 3.6 → 3.1 ms. The first factorisation in a process
+  still touches fresh memory.
+
+**Rejected in round 3.**
+- **Scoped NumPy allocator** (NEP 49 `PyDataMem_SetHandler`, context-local): 2 MB-aligned
+  `MADV_HUGEPAGE` blocks cached for reuse. End-to-end 0.774 vs 0.785 s, plus occasional 50–100 ms
+  stalls from synchronous THP compaction (`defrag=madvise`). Removed. glibc's own
+  `glibc.malloc.hugetlb=1` tunable did help (about −20 ms per pass here), but it must be set
+  before the process starts. A library should not set it.
+- **C++ component kernels:** not done. Warm kernel time is dominated by complex transcendentals,
+  which C++ would not make cheaper. E24 removed the duplicate evaluation instead.
+- **Faster `np.nonzero` variants** on the dense matrices: all memory-bound at about 3.6 ms.
+- **Not considered legitimate:**
+  - a persistent or install-time XLA compilation cache (precomputed compilation);
+  - pre-importing JAX from a `.pth` file (it would move import time before the benchmark's first
+    timer);
+  - dropping refinement;
+  - reduced precision;
+  - low-rank (Woodbury) frequency updates (cond(A) ≈ 1e31).
+
+**Verification after round 3.**
+- `pytest tests`: 55 passed (backend agreement, detectors, exact cached partials).
+- `tests/check_native.py`: all 19 kernels vs `jax.vjp` ≤ 6.9e-15.
+- `tests/check_jvp_transpose.py`: ≤ 2.7e-16.
+- `tests/check_native_solver.py` on 12 topologies: unchanged from E10/E13.
+- `scratch/test_simd_edges.py`:
+  - a singular frequency gives NaN for that frequency only;
+  - pivot failures are re-pivoted;
+  - backward error stays at 1e-28.
+- `start_here.py` and `examples/{cavity,aligo,voyager,uifo}.py` run.
+- `benchmark.py`: PASS, max |Δlog S| 5.374e-6.
+
 ## Generality evidence (E5; unchanged in E9, [`results/generality-e9.jsonl`](results/generality-e9.jsonl))
 
 20 log-spaced frequencies (3 Hz – 3 kHz) per case. The comparisons are host path vs original
@@ -214,6 +420,10 @@ python benchmark.py --repeats 3 --output benchmark-check.json            # macOS
 DIFFEROMETOR_BACKEND=jax python benchmark.py --repeats 3 --output check-jax.json  # in-graph fallback path
 DIFFEROMETOR_NATIVE=0 python benchmark.py --repeats 3 --output check-superlu.json  # host path with SuperLU instead of the C++ solver
 python tests/check_native_solver.py  # C++ solver vs SuperLU vs JAX on 12 topologies
+DIFFEROMETOR_NATIVE_SIMD=0 python benchmark.py --repeats 3 --output check-nosimd.json  # sequential refactorisation
+DIFFEROMETOR_XLA_FAST_COMPILE=0 python benchmark.py --cpus 1 --repeats 3 --output check-xla-default.json  # XLA's default compile settings (E14 off)
+DIFFEROMETOR_NATIVE_ISA=generic python benchmark.py --cpus 1 --repeats 3 --output check-generic.json  # baseline-ISA lane kernels (E16)
+python -m pytest tests -q && python tests/check_native.py && python tests/check_native_solver.py
 ```
 
 ## Challenger — final audit of the integrated submission (HEAD after E9): **APPROVE**

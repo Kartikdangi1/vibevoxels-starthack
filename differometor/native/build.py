@@ -16,7 +16,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 SOURCE = HERE / "dfsparse.cpp"
-FLAGS = ["-O3", "-std=c++17", "-shared", "-fPIC", "-fno-math-errno"]
+# -ffp-contract=off: no fused multiply-add contraction, so results do not depend on the
+# target's FMA support (and match the scalar reference arithmetic bit for bit).
+FLAGS = ["-O3", "-std=c++17", "-shared", "-fPIC", "-fno-math-errno", "-ffp-contract=off"]
 
 
 def library_name():

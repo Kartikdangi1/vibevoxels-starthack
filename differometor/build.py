@@ -92,6 +92,14 @@ Notes
 """
 
 
+def identity_link(x):
+    """Placeholder linking function for setups without linked parameters (x -> x).
+
+    A named function, so that the host path can recognise it and skip tracing it with JAX.
+    """
+    return x
+
+
 def set_instructions(
     instructions: dict,
     node: str,
@@ -650,7 +658,8 @@ def build(setup: Setup):
 
     # Carrier matrix: identity on the left block, with a separate right-hand-side column.
     carrier_matrix = np.zeros((system_size, system_size + 1), dtype=complex)
-    carrier_matrix[:, :system_size] = np.eye(system_size, dtype=complex)
+    diagonal = np.arange(system_size)
+    carrier_matrix[diagonal, diagonal] = 1  # identity block (no dense np.eye temporary)
 
     # Ensure signal_size is at least 1 to avoid conditional logic later.
     if signal_size == 0:
@@ -658,10 +667,11 @@ def build(setup: Setup):
 
     # Signal matrix includes two carrier-sized blocks plus appended signal block, plus a right-hand-side column.
     signal_matrix = np.zeros((system_size * 2 + signal_size, system_size * 2 + signal_size + 1), dtype=complex)
-    signal_matrix[:, : system_size * 2 + signal_size] = np.eye(system_size * 2 + signal_size, dtype=complex)
+    diagonal = np.arange(system_size * 2 + signal_size)
+    signal_matrix[diagonal, diagonal] = 1
 
     # Noise matrix has the same shape as the signal matrix without the right-hand side.
-    noise_matrix = np.zeros(signal_matrix[:, :-1].shape)
+    noise_matrix = np.zeros(signal_matrix[:, :-1].shape, dtype=complex)  # never written here; complex as returned
     noise_detectors = {}
 
     # Selection vectors map fields to detector readouts for quantum noise calculations.
@@ -1416,16 +1426,18 @@ def build(setup: Setup):
     if len(linked_indices) == 0:
         linked_indices = [0]
         indices_to_link = [0]
-        LINKING_FUNCTIONS.append(lambda x: x)
-        linking_function_indices = [0]
+        LINKING_FUNCTIONS.append(identity_link)
+        # The placeholder's own index (it was [0], i.e. whatever function a previous build registered
+        # first; identical for the first build in a process).
+        linking_function_indices = [len(LINKING_FUNCTIONS) - 1]
 
     return (
         (carrier_instructions, signal_instructions, noise_instructions, signal_components, parameter_names),
         (
             np.array([parameters], dtype=complex),
-            np.array(carrier_matrix),
-            np.array(signal_matrix),
-            np.array(noise_matrix, dtype=complex),
+            carrier_matrix,  # local arrays: returned without copying
+            signal_matrix,
+            noise_matrix,
             np.array(noise_selection_vectors, dtype=complex),
             np.array(qhd_parameter_indices, dtype=int),
             np.array(qhd_placing_indices, dtype=int),
@@ -1532,7 +1544,8 @@ def pairs_to_arrays(
 
         if "output_row_indices" in instruction:
             signal_arrays["output_row_indices"].append(instruction["output_row_indices"].flatten() + signal_component_number)
-            individual_rows = len(np.unique(instruction["output_row_indices"]))
+            # number of distinct rows (== len(np.unique(...)), without its overhead on tiny arrays)
+            individual_rows = len(set(np.asarray(instruction["output_row_indices"]).ravel().tolist()))
             signal_component_number += individual_rows
         else:
             signal_arrays["output_row_indices"].append(np.ones(len(instruction["output_column_indices"])) * signal_component_number)

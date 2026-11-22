@@ -36,7 +36,9 @@ from jax.extend import core as jcore
 
 from differometor.components import FUNCTIONS, UNIT_VACUUM, H_PLANCK, F0
 from differometor.build import LINKING_FUNCTIONS
-from differometor.native_kernels import native_function
+from differometor.native_kernels import NativeFunction, native_function, native_link
+from differometor.simulate import gc_paused
+from differometor.native import NativeBatchedLU
 
 NOISE_SCALE = 2 * UNIT_VACUUM * H_PLANCK * F0 * 0.25
 
@@ -688,7 +690,7 @@ class Plan:
                     self.unsupported |= t.unsupported
         self.links = {}
         for index in link_ids:  # only the linking functions this setup references
-            t = trace_function(LINKING_FUNCTIONS[index], (), jnp.complex128)
+            t = native_link(LINKING_FUNCTIONS[index]) or trace_function(LINKING_FUNCTIONS[index], (), jnp.complex128)
             self.links[index] = t
             self.unsupported |= t.unsupported
 
@@ -727,8 +729,33 @@ def _expand_backward(ct_out, source, set_positions, n_source_rows):
     return ct_in
 
 
-def _assemble(plan, parameters, base, groups):
-    """Evaluate grouped component functions into compressed values (R, nnz)."""
+def _relevant_parameters(a, n_params):
+    """Parameters whose cotangent reaches the gradient: the optimized ones and the outputs of
+    links whose input is optimized (links read the values before linking, so no chaining)."""
+    relevant = np.zeros(n_params, bool)
+    relevant[a["optimized_parameter_indices"]] = True
+    link_out, link_in = np.asarray(a["indices_to_link"]), np.asarray(a["linked_indices"])
+    if link_out.size:
+        relevant[link_out[relevant[link_in]]] = True
+    return relevant
+
+
+def _group_columns(relevant, inputs):
+    """Input columns (of 7) of a group that read a relevant parameter, or None if none do."""
+    needed = relevant[inputs]
+    if not needed.any():
+        return None
+    columns = np.zeros(7, bool)
+    columns[:inputs.shape[1]] = needed.any(axis=0)
+    return columns
+
+
+def _assemble(plan, parameters, base, groups, relevant=None):
+    """Evaluate grouped component functions into compressed values (R, nnz).
+
+    With `relevant` (see _relevant_parameters), native kernels also keep the partials the
+    gradient needs, so that the backward does not evaluate them again.
+    """
     rows_count = parameters.shape[0]
     values = np.broadcast_to(base, (rows_count, base.shape[0])).copy()
     saved = []
@@ -741,33 +768,78 @@ def _assemble(plan, parameters, base, groups):
             gathered = np.pad(gathered, ((0, 0), (0, 0), (0, 7 - gathered.shape[-1])))
         inputs = gathered.reshape(-1, 7)  # (R*K, 7)
         traced = plan.traced[fid]
-        raw_out, cache = traced.forward_with_cache(inputs)
+        columns = None
+        if relevant is not None and isinstance(traced, NativeFunction):
+            columns = _group_columns(relevant, np.asarray(g["inputs"]))
+        if columns is not None:
+            raw_out, cache = traced.forward_with_cache(inputs, columns)
+        else:
+            raw_out, cache = traced.forward_with_cache(inputs)
         out = raw_out.reshape(evaluated_rows, g["inputs"].shape[0], -1)
         values[:, g["k"]] = out[:, g["rows"], g["slots"]]
         saved.append((key, cache, inputs.shape[0], out.shape))
-    return values.astype(np.complex128), saved
+    return values.astype(np.complex128, copy=False), saved
 
 
-def _assemble_backward(plan, ct_values, groups, saved, parameters_shape):
-    """Adjoint of `_assemble` w.r.t. parameters (R, P). ct_values is consumed."""
-    ct_parameters = np.zeros(parameters_shape, np.complex128)
+def _scatter_add(index, weights, size):
+    """Complex `np.add.at(zeros(size), index, weights)` for flat indices, via np.bincount.
+
+    np.bincount accumulates in input order starting from zero, exactly as np.add.at does, so
+    the result is bit-identical; it is much faster for complex data.
+    """
+    weights = np.asarray(weights)
+    out = np.empty(size, np.complex128)
+    out.real = np.bincount(index, weights.real, size)
+    out.imag = np.bincount(index, weights.imag, size)
+    return out
+
+
+def _assemble_backward(plan, ct_values, groups, saved, parameters_shape, relevant=None):
+    """Adjoint of `_assemble` w.r.t. parameters (R, P).
+
+    `relevant` (bool per parameter, optional): cotangents are only needed for these parameters.
+    Native kernels then skip the partials of input columns that read none of them; the
+    cotangents of the relevant parameters are unchanged (see NativeFunction.vjp).
+    """
+    n_rows, n_params = parameters_shape
+    flat_index, flat_weights = [], []
     for (key, cache, n_batch, out_shape) in saved:
         g = groups[key]
         fid = int(key[1:])
-        ct_out = np.zeros(out_shape, np.complex128)
         ct_group = ct_values[:, g["k"]]
         if key[0] == "c":  # broadcast over rows -> sum of row cotangents
             ct_group = ct_group.sum(axis=0, keepdims=True)
-        np.add.at(ct_out, (slice(None), g["rows"], g["slots"]), ct_group)
-        ct_in = plan.traced[fid].vjp_from_cache(cache, ct_out.reshape(n_batch, -1))
-        width = g["inputs"].shape[1]
-        ct_in = np.asarray(ct_in).reshape(out_shape[0], g["inputs"].shape[0], 7)[..., :width]
-        if out_shape[0] == 1:
-            np.add.at(ct_parameters[0], g["inputs"], ct_in[0])
+        R, K, S = out_shape
+        out_index = g.get("_out_index")
+        if out_index is None:  # flat (k, slot) position of every write, cached on the group
+            out_index = g["_out_index"] = np.asarray(g["rows"]) * S + np.asarray(g["slots"])
+        index = (np.arange(R)[:, None] * (K * S) + out_index[None, :]).reshape(-1)
+        ct_out = _scatter_add(index, ct_group.reshape(-1), R * K * S)
+        traced = plan.traced[fid]
+        inputs = np.asarray(g["inputs"])
+        width = inputs.shape[1]
+        if relevant is not None:
+            needed = relevant[inputs]  # (K, width)
+            if not needed.any():
+                continue
+        if relevant is not None and isinstance(traced, NativeFunction):
+            ct_in = traced.vjp_from_cache(cache, ct_out.reshape(n_batch, -1), _group_columns(relevant, inputs))
         else:
-            rows = np.arange(out_shape[0])[:, None, None]
-            np.add.at(ct_parameters, (np.broadcast_to(rows, ct_in.shape), np.broadcast_to(g["inputs"][None], ct_in.shape)), ct_in)
-    return ct_parameters
+            ct_in = traced.vjp_from_cache(cache, ct_out.reshape(n_batch, -1))
+        ct_in = np.asarray(ct_in).reshape(R, K, 7)[..., :width]
+        if relevant is None:
+            flat_index.append((np.arange(R)[:, None, None] * n_params + inputs[None]).reshape(-1))
+            flat_weights.append(ct_in.reshape(-1))
+        else:
+            # Only entries that land on relevant parameters; their accumulation order is unchanged.
+            sel = np.flatnonzero(needed.reshape(-1))
+            flat_index.append((np.arange(R)[:, None] * n_params + inputs.reshape(-1)[sel][None, :]).reshape(-1))
+            flat_weights.append(ct_in.reshape(R, K * width)[:, sel].reshape(-1))
+    if not flat_index:
+        return np.zeros(parameters_shape, np.complex128)
+    # One scatter for all groups keeps np.add.at's group-by-group accumulation order.
+    return _scatter_add(np.concatenate(flat_index), np.concatenate(flat_weights),
+                        n_rows * n_params).reshape(parameters_shape)
 
 
 _SUPERLU = []
@@ -992,7 +1064,7 @@ class SuperLUBatchedLU:
         if self.lu.lu is None:
             self.parts = [RefinedLU(values[f], rows, cols, n, pattern=small) for f in range(self.F)]
 
-    def solve(self, b, trans="N"):
+    def solve(self, b, trans="N", overwrite_b=False):  # overwrite_b: accepted for interface parity
         b = np.asarray(b, dtype=np.complex128)
         if b.ndim == 3 and b.shape[2] == 0:
             return np.zeros(b.shape, np.complex128)
@@ -1014,29 +1086,32 @@ def _forward(plan, a):
         link_outputs[i] = np.asarray(plan.links[int(fi)](np.array([x]))).reshape(-1)[0]
     P[0, a["indices_to_link"]] = link_outputs
     r["P0"], r["link_inputs"] = P.copy(), link_inputs
+    # Only cotangents of these parameters reach the gradient (see the end of _backward).
+    relevant = _relevant_parameters(a, P.shape[1])
     qhd = np.exp(1j * (P[0, a["qhd_parameter_indices"]] * (np.pi / 180)))
 
     # carrier
     Pc, src_c, set_c = _expand(P, a["carrier_changing_parameter_indices"], a["carrier_changing_values"])
-    cvals, saved_c = _assemble(plan, Pc, a["carrier_values"], a["carrier_groups"])
+    cvals, saved_c = _assemble(plan, Pc, a["carrier_values"], a["carrier_groups"], relevant)
     n_c = a["carrier_rows"].shape[0]
     CN = a["carrier_size_marker"].shape[0]
     F_c = cvals.shape[0]
     cb = np.zeros((F_c, CN), np.complex128)
     cb[:, a["carrier_rhs_rows"]] = cvals[:, n_c:]
     lus_c = BatchedLU(cvals[:, :n_c], a["carrier_rows"], a["carrier_cols"], CN)
-    carrier = lus_c.solve(cb)  # (CV, CN)
+    carrier = lus_c.solve(cb, overwrite_b=True)  # (CV, CN); cb is a temporary
 
     # signal
     Ps, src_s, set_s = _expand(Pc, a["signal_changing_parameter_indices"], a["signal_changing_values"])
-    svals0, saved_s = _assemble(plan, Ps, a["signal_values"], a["signal_groups"])
+    svals0, saved_s = _assemble(plan, Ps, a["signal_values"], a["signal_groups"], relevant)
     pk = a["signal_place_k"]
     sci = a["signal_carrier_indices"].reshape(-1)
     placed_before = svals0[:, pk].copy()
     svals = svals0
     svals[:, pk] = -placed_before * carrier[:, sci]
     mask = a["signal_conj_mask"]
-    svals = np.where(mask, np.conj(svals), svals)
+    conj_k = np.flatnonzero(mask)
+    svals[:, conj_k] = np.conj(svals[:, conj_k])  # same values as np.where(mask, conj, svals), in place
     SN = a["noise_selection_vectors"].shape[2]
     n_s = a["signal_rows"].shape[0]
     F = svals.shape[0]
@@ -1058,20 +1133,20 @@ def _forward(plan, a):
     c = np.ascontiguousarray(np.transpose(np.broadcast_to(sel, (D, F, SN)), (1, 0, 2)))  # (F, D, SN)
 
     lus_s = BatchedLU(svals[:, :n_s], a["signal_rows"], a["signal_cols"], SN)
-    signal = lus_s.solve(sb)  # (F, SN)
+    signal = lus_s.solve(sb, overwrite_b=True)  # (F, SN); sb is a temporary
     w = np.ascontiguousarray(np.transpose(lus_s.solve(np.transpose(c, (0, 2, 1)), trans="H"), (0, 2, 1)))  # (F, D, SN)
 
     # quantum noise
     noise_const = all(k[0] == "c" for k in a["noise_groups"])
     Pn = P if noise_const else Ps
-    nvals, saved_n = _assemble(plan, Pn, a["noise_values"], a["noise_groups"])
+    nvals, saved_n = _assemble(plan, Pn, a["noise_values"], a["noise_groups"], relevant)
     nr, nc = a["noise_rows"], a["noise_cols"]
     wr_conj = np.conj(w[:, :, nr])
     wc = w[:, :, nc]
     q = np.sum(np.real(nvals[:, None, :] * wr_conj * wc), axis=2)  # (F, D)
     noise = np.sqrt(NOISE_SCALE * q.T)  # (D, F)
 
-    r.update(Pc=Pc, src_c=src_c, set_c=set_c, saved_c=saved_c, lus_c=lus_c, carrier=carrier,
+    r.update(relevant=relevant, Pc=Pc, src_c=src_c, set_c=set_c, saved_c=saved_c, lus_c=lus_c, carrier=carrier,
              Ps=Ps, src_s=src_s, set_s=set_s, saved_s=saved_s, placed_before=placed_before,
              svals=svals, nsv=nsv, nsv_t=nsv_t, qhd=qhd, lus_s=lus_s, signal=signal, w=w,
              nvals=nvals, saved_n=saved_n, noise_const=noise_const, wr_conj=wr_conj, wc=wc, noise=noise)
@@ -1095,20 +1170,36 @@ def _backward(plan, a, r, ct_carrier_T, ct_signal_T, ct_noise):
     nvals, wr_conj, wc = r["nvals"], r["wr_conj"], r["wc"]
     ct_s = ct_q[:, :, None]  # ct of the complex sum terms (real)
     ct_nvals = np.sum(ct_s * wr_conj * wc, axis=(0, 1))[None, :] if r["noise_const"] else np.sum(ct_s * wr_conj * wc, axis=1)
-    ct_w = np.zeros((F, D, SN), np.complex128)
-    np.add.at(ct_w, (slice(None), slice(None), nr), np.conj(ct_s * nvals[:, None, :] * wc))
-    np.add.at(ct_w, (slice(None), slice(None), nc), ct_s * nvals[:, None, :] * wr_conj)
+    # ct_w[f, d, nr] += conj(ct_s nvals wc); then ct_w[f, d, nc] += ct_s nvals wr_conj (np.add.at order)
+    M = nr.shape[0]
+    base = (np.arange(F * D) * SN)[:, None]
+    index = np.concatenate([(base + nr[None, :]).reshape(-1), (base + nc[None, :]).reshape(-1)])
+    weights = np.concatenate([np.conj(ct_s * nvals[:, None, :] * wc).reshape(F * D, M).reshape(-1),
+                              (ct_s * nvals[:, None, :] * wr_conj).reshape(-1)])
+    ct_w = _scatter_add(index, weights, F * D * SN).reshape(F, D, SN)
 
     # sparse solves (signal x and noise weights w share one factorisation)
     svals = r["svals"]
     n_s = a["signal_rows"].shape[0]
     sr, sc = a["signal_rows"], a["signal_cols"]
-    ct_svals = np.zeros(svals.shape, np.complex128)
     signal = r["signal"]
+    native_lu = isinstance(r["lus_s"], NativeBatchedLU)
+    # The native solver keeps its own copy of the matrix values and the backward needs only the
+    # shape of svals, so its (already mapped) memory is reused for the cotangent.
+    ct_svals = svals if native_lu else np.empty(svals.shape, np.complex128)
     bb = r["lus_s"].solve(ct_signal, trans="T")  # (F, SN)
-    y = np.transpose(r["lus_s"].solve(np.transpose(np.conj(ct_w), (0, 2, 1))), (0, 2, 1))  # (F, D, SN)
+    y_nd = r["lus_s"].solve(np.ascontiguousarray(np.transpose(np.conj(ct_w), (0, 2, 1))), overwrite_b=True)  # (F, SN, D)
+    y = np.transpose(y_nd, (0, 2, 1))  # (F, D, SN) view
     ct_c = np.conj(y)
-    ct_svals[:, :n_s] = -bb[:, sr] * signal[:, sc] - np.sum(np.conj(w[:, :, sr]) * y[:, :, sc], axis=1)
+    # ct(A) = -bb[sr] x[sc] - sum_d conj(w_d[sr]) y_d[sc]
+    terms = ct_svals[:, :n_s]
+    if native_lu:  # one pass in C++, same operations and order as the NumPy expression below
+        from differometor.native import adjoint_entries
+        adjoint_entries(np.ascontiguousarray(sr), np.ascontiguousarray(sc), np.ascontiguousarray(bb),
+                        np.ascontiguousarray(signal), np.ascontiguousarray(w), y_nd, terms)
+    else:
+        terms[...] = -bb[:, sr] * signal[:, sc]
+        terms -= np.sum(np.conj(w[:, :, sr]) * y[:, :, sc], axis=1)
     ct_svals[:, n_s:] = bb[:, a["signal_rhs_rows"]]
 
     # detector selections -> carrier (and qhd phases)
@@ -1131,8 +1222,8 @@ def _backward(plan, a, r, ct_carrier_T, ct_signal_T, ct_noise):
         np.add.at(ct_P0, (0, a["qhd_parameter_indices"]), ct_qhd * dq)
 
     # conjugation mask and carrier scaling of the signal matrix
-    mask = a["signal_conj_mask"]
-    ct_svals = np.where(mask, np.conj(ct_svals), ct_svals)
+    conj_k = np.flatnonzero(a["signal_conj_mask"])
+    ct_svals[:, conj_k] = np.conj(ct_svals[:, conj_k])
     pk = a["signal_place_k"]
     sci = a["signal_carrier_indices"].reshape(-1)
     ct_placed = ct_svals[:, pk].copy()
@@ -1142,12 +1233,16 @@ def _backward(plan, a, r, ct_carrier_T, ct_signal_T, ct_noise):
     for row in range(ct_carrier_terms.shape[0]):
         np.add.at(ct_carrier[row], sci, ct_carrier_terms[row])
 
+    # Only cotangents of optimized and linked parameters reach the result (see the end of
+    # this function); assembly adjoints may skip inputs that read none of them.
+    relevant = r["relevant"]  # as in the forward, whose cached kernel partials match it
+
     # signal + noise assembly -> signal-expanded parameters
-    ct_Ps = _assemble_backward(plan, ct_svals, a["signal_groups"], r["saved_s"], r["Ps"].shape)
+    ct_Ps = _assemble_backward(plan, ct_svals, a["signal_groups"], r["saved_s"], r["Ps"].shape, relevant)
     if r["noise_const"]:
-        ct_P0 += _assemble_backward(plan, ct_nvals, a["noise_groups"], r["saved_n"], r["P0"].shape)
+        ct_P0 += _assemble_backward(plan, ct_nvals, a["noise_groups"], r["saved_n"], r["P0"].shape, relevant)
     else:
-        ct_Ps += _assemble_backward(plan, ct_nvals, a["noise_groups"], r["saved_n"], r["Ps"].shape)
+        ct_Ps += _assemble_backward(plan, ct_nvals, a["noise_groups"], r["saved_n"], r["Ps"].shape, relevant)
     ct_Pc = _expand_backward(ct_Ps, r["src_s"], r["set_s"], r["Pc"].shape[0])
 
     # carrier solve
@@ -1157,7 +1252,7 @@ def _backward(plan, a, r, ct_carrier_T, ct_signal_T, ct_noise):
     bb = r["lus_c"].solve(ct_carrier, trans="T")  # (CV, CN)
     cvals_ct[:, :n_c] = -bb[:, crr] * carrier[:, ccc]
     cvals_ct[:, n_c:] = bb[:, a["carrier_rhs_rows"]]
-    ct_Pc += _assemble_backward(plan, cvals_ct, a["carrier_groups"], r["saved_c"], r["Pc"].shape)
+    ct_Pc += _assemble_backward(plan, cvals_ct, a["carrier_groups"], r["saved_c"], r["Pc"].shape, relevant)
     ct_P0 += _expand_backward(ct_Pc, r["src_c"], r["set_c"], r["P0"].shape[0])
 
     # linking (outputs overwrite, inputs read the row before linking)
@@ -1184,8 +1279,14 @@ def _to_numpy(tree):
     return jax.tree_util.tree_map(np.asarray, tree)
 
 
-def _host_forward(plan, flat_arrays, treedef):
-    a = _to_numpy(jax.tree_util.tree_unflatten(treedef, flat_arrays))
+def _host_forward(plan, rebuild, optimized_parameters, *operands):
+    with gc_paused():
+        return _host_forward_impl(plan, rebuild, optimized_parameters, *operands)
+
+
+def _host_forward_impl(plan, rebuild, optimized_parameters, *operands):
+    a = _to_numpy(rebuild([np.asarray(x) for x in operands]))
+    a["optimized_parameters"] = np.asarray(optimized_parameters)
     plan._last_a = a
     carrier_T, signal_T, noise, residuals = _forward(plan, a)
     _TOKEN[0] += 1
@@ -1197,6 +1298,11 @@ def _host_forward(plan, flat_arrays, treedef):
 
 
 def _host_backward_token(plan, token, optimized_parameters, ct_carrier, ct_signal, ct_noise):
+    with gc_paused():
+        return _host_backward_impl(plan, token, optimized_parameters, ct_carrier, ct_signal, ct_noise)
+
+
+def _host_backward_impl(plan, token, optimized_parameters, ct_carrier, ct_signal, ct_noise):
     p = np.asarray(optimized_parameters)
     cached = _RESIDUALS.get(int(token))
     if cached is not None and np.array_equal(cached[1]["optimized_parameters"], p):
@@ -1207,8 +1313,26 @@ def _host_backward_token(plan, token, optimized_parameters, ct_carrier, ct_signa
     return _backward(plan, a, residuals, np.asarray(ct_carrier), np.asarray(ct_signal), np.asarray(ct_noise))
 
 
-def make_host_simulate(arrays):
-    """Return (simulate_fn, plan) for these (traced) arrays, or (None, plan) if unsupported."""
+def make_host_simulate(source):
+    """Return (simulate_fn, plan) for these (traced) arrays, or (None, plan) if unsupported.
+
+    `source`: the compressed arrays other than optimized_parameters, as a `PackedArrays` (from
+    `run_build_step`: a few buffers become the callback's operands) or as a dict of arrays.
+    """
+    from differometor.simulate import PackedArrays
+    if isinstance(source, PackedArrays):
+        arrays = source.shapes()
+        operands = list(source.buffers)
+        layout = source.layout
+
+        def rebuild(buffers):
+            return PackedArrays(buffers, layout).unpack()
+    else:
+        arrays = source
+        operands, treedef = jax.tree_util.tree_flatten(source)
+
+        def rebuild(leaves):
+            return jax.tree_util.tree_unflatten(treedef, leaves)
     carrier_rows_count = arrays["carrier_changing_values"].shape[1]
     signal_rows_count = arrays["signal_changing_values"].shape[1] * carrier_rows_count
     groups_meta = {
@@ -1227,17 +1351,14 @@ def make_host_simulate(arrays):
     if not plan.supported:
         return None, plan
 
-    rest = {key: value for key, value in arrays.items() if key != "optimized_parameters"}
     out_shapes = (jax.ShapeDtypeStruct(shapes["carrier"], jnp.complex128),
                   jax.ShapeDtypeStruct(shapes["signal"], jnp.complex128),
                   jax.ShapeDtypeStruct(shapes["noise"], jnp.float64),
                   jax.ShapeDtypeStruct((), jnp.int64))
 
     def run_forward(optimized_parameters):
-        tree = dict(rest, optimized_parameters=optimized_parameters)
-        flat, treedef = jax.tree_util.tree_flatten(tree)
-        return jax.pure_callback(partial(_host_forward_flat, plan, treedef), out_shapes, *flat,
-                                 vmap_method="sequential")
+        return jax.pure_callback(partial(_host_forward, plan, rebuild), out_shapes, optimized_parameters,
+                                 *operands, vmap_method="sequential")
 
     @jax.custom_vjp
     def host_simulate(optimized_parameters):
@@ -1256,7 +1377,3 @@ def make_host_simulate(arrays):
 
     host_simulate.defvjp(fwd, bwd)
     return host_simulate, plan
-
-
-def _host_forward_flat(plan, treedef, *flat):
-    return _host_forward(plan, flat, treedef)

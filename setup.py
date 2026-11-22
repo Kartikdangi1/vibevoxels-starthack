@@ -22,10 +22,18 @@ class BuildPyWithNative(build_py):
             module.build()
         except Exception as error:  # noqa: BLE001 - optional component
             print(f"warning: native solver not built, falling back to SuperLU ({error})")
+        # Byte-compile the source tree, as pip does for regular installs. Editable installs
+        # import from the source tree, which pip does not compile, so the first import would
+        # otherwise compile ~10k lines of Python.
+        try:
+            import compileall
+            compileall.compile_dir(str(path.parent.parent), quiet=1)
+        except Exception as error:  # noqa: BLE001 - optional
+            print(f"warning: byte-compilation skipped ({error})")
         super().run()
 
 
 setup(
     cmdclass={"build_py": BuildPyWithNative},
-    package_data={"differometor.native": ["*.so", "*.dylib", "*.dll", "*.cpp"]},
+    package_data={"differometor.native": ["*.so", "*.dylib", "*.dll", "*.cpp", "*.h"]},
 )
