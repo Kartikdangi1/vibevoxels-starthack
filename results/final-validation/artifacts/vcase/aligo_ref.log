@@ -1,0 +1,3 @@
+{"case": "aligo", "seconds_build_compile_run": 9.960811741650105, "frequency_count": 101, "design_variables": 29, "gradient_length": 29, "loss": 9.252939731135683e-12, "dtypes": {"carrier": "complex128", "signal": "complex128", "noise": "float64", "gradient": "float64"}, "finite": {"carrier": true, "signal": true, "noise": true, "sensitivity": true, "powers": true, "loss": true, "gradient": true}, "sensitivity_positive": true, "gradient_nonzero": 28, "max_abs_log_sensitivity_error_vs_public_reference": 1.23392851492099e-10, "jitter_1e-12_max_abs_dlogS": 9.067518647043471e-08}
+BACKEND-PROBE {"info": {"differometor_file": "/root/validation/ref/differometor/__init__.py", "native_library": null, "host_module": false, "native_module": false}, "counts": {}}
+EXIT 0

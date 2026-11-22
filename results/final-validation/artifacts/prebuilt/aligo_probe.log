@@ -1,0 +1,37 @@
+Initialize CPU backend: 0.011051 s
+CPU: AMD EPYC 9334 32-Core Processor; affinity: 1; devices: [CpuDevice(id=0)]
+Read and parse public inputs: 0.000210 s
+Build optical setup and prepare inputs: 0.036605 s
+Workload: 101 frequencies; 29 physical design variables; no optimizer
+Forward: trace / lower: 0.007489 s
+Forward: compile: 0.008293 s
+Forward simulation + AD residuals: 0.006254 s
+Sensitivity: trace / lower: 0.022218 s
+Sensitivity: compile: 0.089640 s
+Sensitivity, powers and scalar loss: 0.000770 s
+Gradient: trace / lower: 0.007004 s
+Gradient: compile: 0.035083 s
+Reverse-mode gradient: 0.006571 s
+Transfer results to host: 0.000126 s
+Complete first-run total (excluding validation): 0.238988 s
+Forward: 0.005345 s
+Sensitivity: 0.000432 s
+Gradient: 0.005670 s
+Host transfer: 0.000089 s
+Repeat 01/3: 0.011536 s
+Forward: 0.005757 s
+Sensitivity: 0.000416 s
+Gradient: 0.005435 s
+Host transfer: 0.000078 s
+Repeat 02/3: 0.011687 s
+Forward: 0.005569 s
+Sensitivity: 0.000396 s
+Gradient: 0.005488 s
+Host transfer: 0.000082 s
+Repeat 03/3: 0.011535 s
+Validating outputs, reference sensitivity and finite-difference gradient...
+PASS: reference sensitivity and gradient spot check; full runtime median 0.011536 s
+JSON: /tmp/v_pb_probe.json
+Plot: /tmp/v_pb_probe.png
+BACKEND-PROBE {"info": {"differometor_file": "/root/validation/opt_prebuilt/differometor/__init__.py", "native_library": "/root/validation/opt_prebuilt/differometor/native/prebuilt/linux-x86_64/libdfsparse-v4.so", "host_module": true, "native_module": true, "native_available": true}, "counts": {"make_host_simulate calls": 2, "make_host_simulate -> host path": 2, "NativeBatchedLU (C++)": 16}}
+EXIT 0

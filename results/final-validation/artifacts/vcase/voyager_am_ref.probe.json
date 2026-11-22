@@ -1,0 +1,9 @@
+{
+  "info": {
+    "differometor_file": "/root/validation/ref/differometor/__init__.py",
+    "native_library": null,
+    "host_module": false,
+    "native_module": false
+  },
+  "counts": {}
+}

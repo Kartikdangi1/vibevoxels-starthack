@@ -1,0 +1,2 @@
+{"case": "dev", "frequencies": 20000, "f_min_hz": 10.0, "f_max_hz": 20000.0, "design_variables": 193, "gradient_length": 193, "seconds_imports": 0.2550831828266382, "seconds_build": 0.06526658497750759, "seconds_first_compile_and_run": 19.745764922350645, "seconds_total_first": 20.06611469015479, "seconds_warm": [19.112672140821815, 18.806515963748097], "peak_rss_gib": 28.57229232788086, "finite": true, "sensitivity_positive": true, "gradient_nonzero": 193, "loss": -22.14523286592764}
+EXIT 0

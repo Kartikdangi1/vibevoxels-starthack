@@ -1,0 +1,15 @@
+=== 2026-11-22T08:29:42+00:00 environment
+=== 2026-11-22T08:29:43+00:00 build native library (differometor/native/build.py)
+=== 2026-11-22T08:29:44+00:00 official development benchmark, optimised (timing run, unchanged script)
+=== 2026-11-22T08:29:46+00:00 official aLIGO benchmark, optimised (timing run, unchanged script)
+=== 2026-11-22T08:29:47+00:00 backend probe runs (same unchanged scripts, solver entry points counted)
+=== 2026-11-22T08:29:48+00:00 official reference implementation: development + aLIGO (correctness reference)
+=== 2026-11-22T08:32:19+00:00 prebuilt-only install (no compile step): library moved out, same scripts
+=== 2026-11-22T08:32:23+00:00 independent full outputs + gradients + finite differences (vcase)
+=== 2026-11-22T08:32:28+00:00 array comparisons
+=== 2026-11-22T08:32:29+00:00 native solver vs SuperLU vs JAX on 12 topologies (tests/check_native_solver.py)
+=== 2026-11-22T08:34:59+00:00 done
+=== 2026-11-22T08:35:43+00:00 RERUN backend probes
+=== 2026-11-22T08:35:47+00:00 RERUN vcase
+=== 2026-11-22T08:38:35+00:00 RERUN comparisons
+=== 2026-11-22T08:38:37+00:00 rerun done

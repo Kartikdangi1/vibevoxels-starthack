@@ -1,0 +1,36 @@
+Initialize CPU backend: 0.003407 s
+CPU: AMD EPYC 9334 32-Core Processor; affinity: 1; devices: [CpuDevice(id=0)]
+Read and parse public inputs: 0.001560 s
+Build optical setup and prepare inputs: 0.063933 s
+Workload: 101 frequencies; 193 physical design variables; no optimizer
+Forward: trace / lower: 0.022293 s
+Forward: compile: 0.007477 s
+Forward simulation + AD residuals: 0.047404 s
+Sensitivity: trace / lower: 0.022500 s
+Sensitivity: compile: 0.088875 s
+Sensitivity, powers and scalar loss: 0.001477 s
+Gradient: trace / lower: 0.006981 s
+Gradient: compile: 0.034662 s
+Reverse-mode gradient: 0.036128 s
+Transfer results to host: 0.000170 s
+Complete first-run total (excluding validation): 0.602176 s
+Forward: 0.045029 s
+Sensitivity: 0.000794 s
+Gradient: 0.034421 s
+Host transfer: 0.000125 s
+Repeat 01/3: 0.080369 s
+Forward: 0.045793 s
+Sensitivity: 0.000895 s
+Gradient: 0.033883 s
+Host transfer: 0.000121 s
+Repeat 02/3: 0.080692 s
+Forward: 0.044967 s
+Sensitivity: 0.000898 s
+Gradient: 0.034785 s
+Host transfer: 0.000134 s
+Repeat 03/3: 0.080785 s
+Validating outputs, reference sensitivity and finite-difference gradient...
+PASS: reference sensitivity and gradient spot check; full runtime median 0.080692 s
+JSON: /root/validation/artifacts/prebuilt/dev.json
+Plot: /root/validation/artifacts/prebuilt/dev.png
+EXIT 0

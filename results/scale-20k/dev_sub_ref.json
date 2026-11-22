@@ -1,0 +1,22 @@
+{
+  "case": "dev",
+  "frequencies": 100,
+  "f_min_hz": 10.0,
+  "f_max_hz": 18543.13264037518,
+  "design_variables": 193,
+  "gradient_length": 193,
+  "seconds_imports": 0.2642804104834795,
+  "seconds_build": 0.7092570457607508,
+  "seconds_first_compile_and_run": 18.537350667640567,
+  "seconds_total_first": 19.510888123884797,
+  "seconds_warm": [
+    9.626608084887266,
+    9.624989371746778,
+    9.615962628275156
+  ],
+  "peak_rss_gib": 6.1942291259765625,
+  "finite": true,
+  "sensitivity_positive": true,
+  "gradient_nonzero": 193,
+  "loss": -22.13402641237459
+}

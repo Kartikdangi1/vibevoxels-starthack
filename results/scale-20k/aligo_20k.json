@@ -1,0 +1,21 @@
+{
+  "case": "aligo",
+  "frequencies": 20000,
+  "f_min_hz": 10.0,
+  "f_max_hz": 20000.0,
+  "design_variables": 29,
+  "gradient_length": 29,
+  "seconds_imports": 0.25561279244720936,
+  "seconds_build": 0.04059041477739811,
+  "seconds_first_compile_and_run": 1.4941624123603106,
+  "seconds_total_first": 1.790365619584918,
+  "seconds_warm": [
+    1.3319246284663677,
+    1.3771574795246124
+  ],
+  "peak_rss_gib": 2.3435211181640625,
+  "finite": true,
+  "sensitivity_positive": true,
+  "gradient_nonzero": 29,
+  "loss": -23.30821866114872
+}

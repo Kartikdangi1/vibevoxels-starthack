@@ -1,0 +1,14 @@
+{
+  "info": {
+    "differometor_file": "/root/validation/opt/differometor/__init__.py",
+    "native_library": "/root/validation/opt/differometor/native/libdfsparse.so",
+    "host_module": true,
+    "native_module": true,
+    "native_available": true
+  },
+  "counts": {
+    "make_host_simulate calls": 3,
+    "make_host_simulate -> host path": 3,
+    "NativeBatchedLU (C++)": 708
+  }
+}

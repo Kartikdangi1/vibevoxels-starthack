@@ -1,0 +1,17 @@
+2026-11-22T08:29:42+00:00
+Linux j-wkdcywqdqjxmogygj6fjao3jhl 6.8.0-79-generic #79-Ubuntu SMP PREEMPT_DYNAMIC Tue Aug 12 14:42:46 UTC 2025 x86_64 x86_64 x86_64 GNU/Linux
+PRETTY_NAME="Ubuntu 22.04.5 LTS"
+Architecture:                         x86_64
+CPU(s):                               128
+Model name:                           AMD EPYC 9334 32-Core Processor
+Flags:                                fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good amd_lbr_v2 nopl nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 pcid sse4_1 sse4_2 x2apic movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic
+               total        used        free      shared  buff/cache   available
+Mem:             503          21         107           0         374         477
+ldd (Ubuntu GLIBC 2.35-0ubuntu3.15) 2.35
+c++ (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0
+--- /root/hk_v2/venv/bin/python
+3.12.15 jax 0.9.0 jaxlib 0.9.0 numpy 2.5.5 scipy 1.18.1
+--- /root/hk_baseline/venv/bin/python
+3.12.15 jax 0.9.0 jaxlib 0.9.0 numpy 2.5.5 scipy 1.18.1
+core pinned: 20
+no XLA/JAX/DIFFEROMETOR/thread env vars

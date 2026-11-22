@@ -1,0 +1,164 @@
+{
+  "label": "vcase voyager_fm",
+  "arrays": {
+    "carrier": {
+      "shape_opt": [
+        70,
+        1
+      ],
+      "shape_ref": [
+        70,
+        1
+      ],
+      "dtype_opt": "complex128",
+      "dtype_ref": "complex128",
+      "finite_opt": true,
+      "finite_ref": true,
+      "bit_identical": false,
+      "max_abs": 1.0260009730700403e-08,
+      "max_abs_over_scale": 4.148200083489201e-12,
+      "max_rel_entries_above_1e-6_scale": 1.5508529323785027e-09,
+      "max_rel_all_nonzero": 3.625360416822348
+    },
+    "frequencies": {
+      "shape_opt": [
+        20
+      ],
+      "shape_ref": [
+        20
+      ],
+      "dtype_opt": "float64",
+      "dtype_ref": "float64",
+      "finite_opt": true,
+      "finite_ref": true,
+      "bit_identical": true,
+      "max_abs": 0.0,
+      "max_abs_over_scale": 0.0,
+      "max_rel_entries_above_1e-6_scale": 0.0,
+      "max_rel_all_nonzero": 0.0
+    },
+    "gradient": {
+      "shape_opt": [
+        74
+      ],
+      "shape_ref": [
+        74
+      ],
+      "dtype_opt": "float64",
+      "dtype_ref": "float64",
+      "finite_opt": true,
+      "finite_ref": true,
+      "bit_identical": false,
+      "max_abs": 1814988680125879.8,
+      "max_abs_over_scale": 1.3166063223647915,
+      "max_rel_entries_above_1e-6_scale": 6.053829618884154,
+      "max_rel_all_nonzero": 70.62966072744182
+    },
+    "loss": {
+      "shape_opt": [],
+      "shape_ref": [],
+      "dtype_opt": "float64",
+      "dtype_ref": "float64",
+      "finite_opt": true,
+      "finite_ref": true,
+      "bit_identical": false,
+      "max_abs": 0.006769434599845248,
+      "max_abs_over_scale": 0.0015873271221401508,
+      "max_rel_entries_above_1e-6_scale": 0.0015873271221401508,
+      "max_rel_all_nonzero": 0.0015873271221401508
+    },
+    "noise": {
+      "shape_opt": [
+        20
+      ],
+      "shape_ref": [
+        20
+      ],
+      "dtype_opt": "float64",
+      "dtype_ref": "float64",
+      "finite_opt": true,
+      "finite_ref": true,
+      "bit_identical": false,
+      "max_abs": 6.661947217379574e-20,
+      "max_abs_over_scale": 8.814678788791536e-12,
+      "max_rel_entries_above_1e-6_scale": 9.200345655895237e-12,
+      "max_rel_all_nonzero": 9.200345655895237e-12
+    },
+    "parameters": {
+      "shape_opt": [
+        74
+      ],
+      "shape_ref": [
+        74
+      ],
+      "dtype_opt": "float64",
+      "dtype_ref": "float64",
+      "finite_opt": true,
+      "finite_ref": true,
+      "bit_identical": true,
+      "max_abs": 0.0,
+      "max_abs_over_scale": 0.0,
+      "max_rel_entries_above_1e-6_scale": 0.0,
+      "max_rel_all_nonzero": 0.0
+    },
+    "powers": {
+      "shape_opt": [
+        70,
+        1
+      ],
+      "shape_ref": [
+        70,
+        1
+      ],
+      "dtype_opt": "float64",
+      "dtype_ref": "float64",
+      "finite_opt": true,
+      "finite_ref": true,
+      "bit_identical": false,
+      "max_abs": 2.537667751312256e-05,
+      "max_abs_over_scale": 8.296379368763841e-12,
+      "max_rel_entries_above_1e-6_scale": 8.76410423194378e-12,
+      "max_rel_all_nonzero": 5.892536436726136
+    },
+    "sensitivity": {
+      "shape_opt": [
+        20
+      ],
+      "shape_ref": [
+        20
+      ],
+      "dtype_opt": "float64",
+      "dtype_ref": "float64",
+      "finite_opt": true,
+      "finite_ref": true,
+      "bit_identical": false,
+      "max_abs": 433645.9666653598,
+      "max_abs_over_scale": 0.621402661121688,
+      "max_rel_entries_above_1e-6_scale": 3.176913186259086,
+      "max_rel_all_nonzero": 3.176913186259086
+    },
+    "signal": {
+      "shape_opt": [
+        156,
+        20
+      ],
+      "shape_ref": [
+        156,
+        20
+      ],
+      "dtype_opt": "complex128",
+      "dtype_ref": "complex128",
+      "finite_opt": true,
+      "finite_ref": true,
+      "bit_identical": false,
+      "max_abs": 2.189427665774358e-07,
+      "max_abs_over_scale": 1.0666448926541202e-08,
+      "max_rel_entries_above_1e-6_scale": 8.686287407250463e-09,
+      "max_rel_all_nonzero": 5.229618768543369
+    }
+  },
+  "max_abs_dlog_sensitivity": 1.4295725015449445,
+  "gradient_rel_2norm_error": 1.3165201530305557,
+  "gradient_cosine": -0.9999553704144493,
+  "gradient_length": 74
+}

@@ -1,0 +1,21 @@
+24:FLAGS = ["-O3", "-std=c++17", "-shared", "-fPIC", "-fno-math-errno"]
+29:ARCH_FLAGS = ["-march=native", "-ffp-contract=off"]
+73:    extra = os.environ.get("DIFFEROMETOR_NATIVE_FLAGS", "").split()
+76:    variants = [[]] if portable else [ARCH_FLAGS, []]
+dfsparse: built /root/validation/opt/differometor/native/libdfsparse.so with /usr/bin/c++ -march=native -ffp-contract=off
+EXIT 0
+total 92
+drwxrwxr-x 4 root root  4096 Nov 22 08:29 .
+drwxrwxr-x 4 root root  4096 Nov 22 08:24 ..
+-rw-rw-r-- 1 root root  4078 Nov 22 08:06 __init__.py
+drwxr-xr-x 2 root root  4096 Nov 22 08:24 __pycache__
+-rw-rw-r-- 1 root root  2934 Nov 22 08:06 _libpath.py
+-rw-rw-r-- 1 root root  5580 Nov 22 08:06 build.py
+-rw-rw-r-- 1 root root 18067 Nov 22 08:06 dfsparse.cpp
+-rwxr-xr-x 1 root root 39200 Nov 22 08:29 libdfsparse.so
+drwxrwxr-x 3 root root  4096 Nov 22 08:06 prebuilt
+available True loaded /root/validation/opt/differometor/native/libdfsparse.so
+  NEEDED               libstdc++.so.6
+  NEEDED               libm.so.6
+  NEEDED               libgcc_s.so.1
+  NEEDED               libc.so.6

@@ -1,0 +1,12 @@
+dev: 20k run vs official at 100 shared freqs: max|dlogS| 1.73e-08 (worst at 822 Hz), median 2.1e-10
+     same 100-freq sample, ours vs official: max|dlogS| 1.70e-08; gradient rel2 4.64e-08, cosine 1.0000000000
+     20k run reproduces our own 100-freq run: max|dlogS| 3.8e-10
+     20k      f= 20000 first   20.07 s  warm  18.807 s  peak  28.57 GiB  finite True grad nonzero 193/193
+     sub_opt  f=   100 first    0.57 s  warm   0.083 s  peak   0.39 GiB  finite True grad nonzero 193/193
+     sub_ref  f=   100 first   19.51 s  warm   9.616 s  peak   6.19 GiB  finite True grad nonzero 193/193
+aligo: 20k run vs official at 100 shared freqs: max|dlogS| 1.27e-10 (worst at 123 Hz), median 1.1e-12
+     same 100-freq sample, ours vs official: max|dlogS| 1.27e-10; gradient rel2 3.82e-10, cosine 1.0000000000
+     20k run reproduces our own 100-freq run: max|dlogS| 7.1e-15
+     20k      f= 20000 first    1.79 s  warm   1.332 s  peak   2.34 GiB  finite True grad nonzero 29/29
+     sub_opt  f=   100 first    0.45 s  warm   0.011 s  peak   0.21 GiB  finite True grad nonzero 29/29
+     sub_ref  f=   100 first   10.05 s  warm   0.080 s  peak   0.87 GiB  finite True grad nonzero 28/29
