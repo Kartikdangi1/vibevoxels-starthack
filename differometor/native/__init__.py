@@ -2,18 +2,18 @@
 
 `available()` is False when the compiled library is missing or disabled with
 ``DIFFEROMETOR_NATIVE=0``; callers then use SciPy's SuperLU. Nothing is compiled
-at import or run time (see ``build.py``).
+at import, install or run time when a prebuilt library fits this machine (see
+``_libpath.py``); ``build.py`` is only needed for other platforms or local tuning.
 """
 
 import os
-import sys
 import weakref
 from pathlib import Path
 
 import numpy as np
 
-_HERE = Path(__file__).resolve().parent
-_NAMES = {"win32": "dfsparse.dll", "darwin": "libdfsparse.dylib"}
+from ._libpath import candidates
+
 _LIB = []
 
 # Pivoting: threshold 1 = partial pivoting (SciPy SuperLU's default) for every fresh
@@ -36,9 +36,10 @@ def _load():
         return _LIB[0]
     lib = None
     if os.environ.get("DIFFEROMETOR_NATIVE", "1") != "0":
-        path = _HERE / _NAMES.get(sys.platform, "libdfsparse.so")
-        if path.exists():
-            import ctypes
+        import ctypes
+
+        # Local build first, then the shipped prebuilt libraries (see _libpath.py).
+        for path in candidates():
             try:
                 lib = ctypes.CDLL(str(path))
                 ptr, cint, cdouble = ctypes.c_void_p, ctypes.c_int, ctypes.c_double
@@ -50,12 +51,19 @@ def _load():
                 lib.dfs_free.argtypes = [ptr]
                 lib.dfs_refactored.restype = cint
                 lib.dfs_refactored.argtypes = [ptr]
-                if lib.dfs_version() != 1:
-                    lib = None
+                if lib.dfs_version() == 1:
+                    break
             except (OSError, AttributeError):
-                lib = None
+                pass
+            lib = None
     _LIB.append(lib)
     return lib
+
+
+def library_path():
+    """Path of the loaded library, or None (SuperLU fallback)."""
+    lib = _load()
+    return Path(lib._name) if lib is not None else None
 
 
 def available():

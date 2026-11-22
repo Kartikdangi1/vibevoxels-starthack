@@ -164,9 +164,11 @@ forces SuperLU).
 - **Rejected.** Minimum degree on AᵀA (COLAMD-like) has 30 % less fill and factorises in 13 ms, but
   its error is 1.5e-2 on Voyager space modulation and 2e-6 on uifo_20_5000, even without pivot
   reuse. The ordering affects the tiny solution components the noise form depends on.
-- **Build.** `pip install -e .` compiles the library (`setup.py` → `differometor/native/build.py`):
-  `$CXX`, `c++`, `g++` or `clang++`, else the `ziglang` pip package. If no compiler is found, the
-  install still succeeds and SuperLU is used. Nothing is compiled at run time.
+- **Build.** Superseded by E13: prebuilt libraries ship with the package, so a normal install
+  compiles nothing. Without a fitting prebuilt library, `pip install -e .` compiles one
+  (`setup.py` → `differometor/native/build.py`): `$CXX`, `c++`, `g++` or `clang++`, else the
+  `ziglang` pip package. If no compiler is found, the install still succeeds and SuperLU is
+  used. Nothing is compiled at run time.
 
 **E11 — cheaper XLA compilation.** After E10 the largest phase we could still change was
 XLA compiling the benchmark's readout and gradient programs (EPYC: 0.217 s of 0.656 s).
@@ -186,6 +188,35 @@ rounding identical to the portable build: the output is bit-identical, while pla
 `-march=native` differed by up to 5e-4 and was rejected. Factorisation of the 101 signal
 systems went from 29.7 to 24.3 ms. A compiler that rejects the flags is retried without
 them; `DIFFEROMETOR_NATIVE_PORTABLE=1` builds the portable library.
+
+**E13 — prebuilt solver, no compile step.** The C++ build (0.85 s on the EPYC, about 1 s
+on an M2) ran at install time, outside the benchmark timer, but it still cost every fresh
+install a compiler run and could be counted against a clean deployment. The package now
+ships the solver prebuilt for Linux x86-64, in three CPU levels:
+`differometor/native/prebuilt/linux-x86_64/libdfsparse-{v1,v3,v4}.so` (baseline SSE2, AVX2,
+AVX-512).
+
+- **Portable binaries.** Built with zig's clang (`build.py --prebuilt`) against glibc 2.17,
+  with libc++ linked in. They need only libc, libm, libpthread and libdl (highest symbol
+  version GLIBC_2.16), so no compiler and no C++ runtime are required.
+- **Safe selection.** `differometor/native/_libpath.py` reads the CPU flags from
+  `/proc/cpuinfo` and offers a level only if the CPU has every feature it needs. A library
+  can never stop the process with an illegal instruction. Order: `DIFFEROMETOR_NATIVE_LIB`,
+  a local build, then the best prebuilt level. A library that fails to load falls through
+  to the next one, and finally to SuperLU.
+- **Install.** `setup.py` calls `build.ensure()`: when a prebuilt library loads, nothing is
+  compiled. Checked with every compiler on PATH replaced by a trap: `pip install -e .`
+  completed in 1.6 s with no compiler call. `DIFFEROMETOR_NATIVE_BUILD=1` still compiles a
+  CPU-tuned library.
+- **Same results, same speed.** One session on AMD EPYC 9334, 1 CPU, 5 interleaved rounds
+  per variant, all PASS: local `-march=native` build 0.5838 s first run / 0.0821 s warm;
+  prebuilt AVX-512 (auto-selected) 0.5816 s / 0.0791 s; AVX2 0.5823 s / 0.0792 s; baseline
+  0.5838 s / 0.0823 s; SuperLU fallback 0.6676 s / 0.1410 s. Every prebuilt level is
+  bit-identical to the local build on all saved arrays (FMA contraction is off everywhere).
+  `tests/check_native_solver.py` (12 topologies) passes with the AVX-512 and baseline
+  libraries.
+- **Other platforms** (macOS, Windows, ARM Linux) have no prebuilt library yet and keep
+  the E10 install-time build.
 
 ## Generality evidence (E5; unchanged in E9, [`results/generality-e9.jsonl`](results/generality-e9.jsonl))
 
@@ -250,6 +281,8 @@ DIFFEROMETOR_NATIVE_PORTABLE=1 python differometor/native/build.py  # solver wit
 |---|---|---|
 | `DIFFEROMETOR_BACKEND` | `host` (default), `jax` | host simulation vs the in-graph sparse JAX path |
 | `DIFFEROMETOR_NATIVE` | `1` (default), `0` | C++ `dfsparse` solver vs SciPy SuperLU |
+| `DIFFEROMETOR_NATIVE_LIB` | path to a `dfsparse` library | load this library first (E13) |
+| `DIFFEROMETOR_NATIVE_BUILD` | unset (default), `1` | install time only: compile a CPU-tuned library even when a prebuilt one fits (E13) |
 | `DIFFEROMETOR_KERNELS` | `all` (default), `none`, or comma-separated function names | closed-form component kernels vs JAX-traced jaxprs |
 | `DIFFEROMETOR_REFINE` | `1` (default), `0` | SuperLU path: iterative-refinement steps per solve |
 | `DIFFEROMETOR_XLA_FLAGS` | `exact` (default), `fast`, `0` | E11 XLA compile flags |

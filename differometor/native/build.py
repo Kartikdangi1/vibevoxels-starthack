@@ -6,6 +6,11 @@ run time: if the library is missing it uses SciPy's SuperLU instead.
 
 Compiler: $CXX if set, else the first of c++/g++/clang++ on PATH, else the
 clang toolchain from the ``ziglang`` pip package (no system headers needed).
+
+Normally nothing needs building: the package ships prebuilt libraries
+(``prebuilt/linux-x86_64/libdfsparse-{v1,v3,v4}.so``) and ``setup.py`` skips the
+compiler when one of them loads. Maintainers regenerate them with
+``python differometor/native/build.py --prebuilt`` (needs ``pip install ziglang``).
 """
 
 import os
@@ -24,12 +29,18 @@ FLAGS = ["-O3", "-std=c++17", "-shared", "-fPIC", "-fno-math-errno"]
 ARCH_FLAGS = ["-march=native", "-ffp-contract=off"]
 
 
+def _libpath():
+    # Loaded by file path: this script also runs standalone and from setup.py.
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("_dfsparse_libpath", HERE / "_libpath.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def library_name():
-    if sys.platform == "win32":
-        return "dfsparse.dll"
-    if sys.platform == "darwin":
-        return "libdfsparse.dylib"
-    return "libdfsparse.so"
+    return _libpath().local_name()
 
 
 def compilers():
@@ -80,5 +91,45 @@ def build(output=None, verbose=True):
     raise RuntimeError("dfsparse: no working C++ compiler found:\n" + "\n".join(errors))
 
 
+# Prebuilt Linux x86-64 libraries: zig's clang against glibc 2.17 with libc++ linked in,
+# so they load on any x86-64 Linux from 2014 on and need no compiler or C++ runtime.
+# -ffp-contract=off keeps every level bit-identical; only the vector width differs.
+PREBUILT_X86 = {"v1": "x86_64", "v3": "x86_64_v3", "v4": "x86_64_v4"}
+PREBUILT_GLIBC = "2.17"
+
+
+def build_prebuilt(verbose=True):
+    folder = HERE / "prebuilt" / "linux-x86_64"
+    folder.mkdir(parents=True, exist_ok=True)
+    zig = [sys.executable, "-m", "ziglang", "c++"]
+    outputs = []
+    for level, cpu in PREBUILT_X86.items():
+        output = folder / f"libdfsparse-{level}.so"
+        command = [*zig, "-target", f"x86_64-linux-gnu.{PREBUILT_GLIBC}", f"-mcpu={cpu}",
+                   *FLAGS, "-ffp-contract=off", "-s", "-o", str(output), str(SOURCE)]
+        subprocess.run(command, check=True, env=_clean_env())
+        if verbose:
+            print(f"dfsparse: built {output.relative_to(HERE)} ({cpu}, glibc {PREBUILT_GLIBC})")
+        outputs.append(output)
+    return outputs
+
+
+def ensure(verbose=True):
+    """Install-time entry point: use a fitting prebuilt library, else compile one.
+
+    DIFFEROMETOR_NATIVE_BUILD=1 always compiles a library tuned for this machine.
+    """
+    if os.environ.get("DIFFEROMETOR_NATIVE_BUILD", "0") in ("", "0"):
+        path = _libpath().loadable_prebuilt()
+        if path is not None:
+            if verbose:
+                print(f"dfsparse: using prebuilt {path.relative_to(HERE)}; nothing to compile")
+            return path
+    return build(verbose=verbose)
+
+
 if __name__ == "__main__":
-    build(sys.argv[1] if len(sys.argv) > 1 else None)
+    if sys.argv[1:] == ["--prebuilt"]:
+        build_prebuilt()
+    else:
+        build(sys.argv[1] if len(sys.argv) > 1 else None)
