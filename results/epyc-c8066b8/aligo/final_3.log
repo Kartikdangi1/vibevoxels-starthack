@@ -1,0 +1,70 @@
+Initialize CPU backend: 0.003342 s
+CPU: AMD EPYC 9334 32-Core Processor; affinity: 1; devices: [CpuDevice(id=0)]
+Read and parse public inputs: 0.000213 s
+Build optical setup and prepare inputs: 0.036447 s
+Workload: 101 frequencies; 29 physical design variables; no optimizer
+Forward: trace / lower: 0.009810 s
+Forward: compile: 0.008400 s
+Forward simulation + AD residuals: 0.007082 s
+Sensitivity: trace / lower: 0.021934 s
+Sensitivity: compile: 0.089613 s
+Sensitivity, powers and scalar loss: 0.000760 s
+Gradient: trace / lower: 0.006953 s
+Gradient: compile: 0.035236 s
+Reverse-mode gradient: 0.006536 s
+Transfer results to host: 0.000121 s
+Complete first-run total (excluding validation): 0.486859 s
+Forward: 0.005367 s
+Sensitivity: 0.000419 s
+Gradient: 0.005463 s
+Host transfer: 0.000082 s
+Repeat 01/10: 0.011332 s
+Forward: 0.005534 s
+Sensitivity: 0.000413 s
+Gradient: 0.005626 s
+Host transfer: 0.000075 s
+Repeat 02/10: 0.011649 s
+Forward: 0.005745 s
+Sensitivity: 0.000411 s
+Gradient: 0.005591 s
+Host transfer: 0.000078 s
+Repeat 03/10: 0.011825 s
+Forward: 0.005364 s
+Sensitivity: 0.000405 s
+Gradient: 0.005561 s
+Host transfer: 0.000080 s
+Repeat 04/10: 0.011410 s
+Forward: 0.006175 s
+Sensitivity: 0.000401 s
+Gradient: 0.005497 s
+Host transfer: 0.000074 s
+Repeat 05/10: 0.012148 s
+Forward: 0.005426 s
+Sensitivity: 0.000406 s
+Gradient: 0.005447 s
+Host transfer: 0.000078 s
+Repeat 06/10: 0.011357 s
+Forward: 0.005450 s
+Sensitivity: 0.000402 s
+Gradient: 0.005547 s
+Host transfer: 0.000077 s
+Repeat 07/10: 0.011476 s
+Forward: 0.005705 s
+Sensitivity: 0.000408 s
+Gradient: 0.004704 s
+Host transfer: 0.000077 s
+Repeat 08/10: 0.010894 s
+Forward: 0.004743 s
+Sensitivity: 0.000378 s
+Gradient: 0.004583 s
+Host transfer: 0.000076 s
+Repeat 09/10: 0.009779 s
+Forward: 0.004710 s
+Sensitivity: 0.000369 s
+Gradient: 0.004357 s
+Host transfer: 0.000075 s
+Repeat 10/10: 0.009511 s
+Validating outputs, reference sensitivity and finite-difference gradient...
+PASS: reference sensitivity and gradient spot check; full runtime median 0.011383 s
+JSON: /root/full_results/aligo/final_3.json
+Plot: /root/full_results/aligo/final_3.png

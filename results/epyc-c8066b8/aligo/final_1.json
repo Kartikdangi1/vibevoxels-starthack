@@ -1,0 +1,415 @@
+{
+  "benchmark": "start-munich-2026-public-differometor-aligo-v1",
+  "measured_at_utc": "2026-11-22T08:14:38.045990+00:00",
+  "starter_sha256": "24f778b2c6d92c0a618120ec90a0c24c719567c53b7c06b209a33404fb0343a6",
+  "benchmark_harness_sha256": "24f778b2c6d92c0a618120ec90a0c24c719567c53b7c06b209a33404fb0343a6",
+  "source": {
+    "public_repository": "https://github.com/artificial-scientist-lab/Differometor",
+    "baseline_commit": "b0dc7c79e7c72a1b010174f6bdcad01efa51d6ff",
+    "commit": "3f8bb8e3b928402d2305feb59380094373e4db94",
+    "modified": false,
+    "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "simulator_files_sha256": {
+      "differometor/__init__.py": "09b310e49c73614667550a9a6b5af930c9ea2958378ece5f408f7ed00e856962",
+      "differometor/build.py": "120662dc115ae536593dba83c95e7f383f9ae5b8856fc55ce3cd5df7706906df",
+      "differometor/components.py": "43de638ee61fc951ebd013dceaec8960d6aa5a58d7c4b96d1d45c4425731f1d8",
+      "differometor/host.py": "d6d111f1c4be0928f58c106e05b0f3f4ff129fabb8fe326ad5cb92e99743e49d",
+      "differometor/native/__init__.py": "cf96d8b837a7c75eadfa0efb693a4d8d1ff497a7b6c3ea2c06cb8b0bb8890776",
+      "differometor/native/_libpath.py": "594d39356f572f615a4a629b1bf128764c4cdb4d45da91b819696e48ad9f63fd",
+      "differometor/native/build.py": "34a20afe78040969629ca4f63c6c99904ae394bb4949ffa003cc50a9b173c9b3",
+      "differometor/native_kernels.py": "55c10b09be9117041637dd03995f90cb1cd6bdb68e584141647fe55a2250c8cf",
+      "differometor/plot.py": "16735e0fb14902f2c024e3da9f2655cbea634c4dd9e06c48af1247e12d0cf606",
+      "differometor/setups.py": "478b1a7391b28604c36d8245e13ffa4f6d0f6dc32eeac6c6feaf5c08aa06a76b",
+      "differometor/simulate.py": "1ebc41ae54744961ae8db771d9ce8b43160d8e0069c036a29af9f8eb9d078b76",
+      "differometor/sparse_solve.py": "cc282078fe6e52993cc4d42fdaaa606e66f0267052a91e7d1c4c8e262351a822",
+      "differometor/utils.py": "73ee8a862cbc435363904addc363071ed7dc8b1546956f82e1746998fe3b09ff"
+    }
+  },
+  "inputs": {
+    "setup": "differometor.setups.aligo(mode='space_modulation')",
+    "label": "aLIGO optical setup",
+    "setup_sha256": "f77fa86eeae1771a9aa3a9305c490a7ef406df6a542c3e93de303d3070536390",
+    "reference": "aligo_test_data.json",
+    "reference_sha256": "e3419da07888d0260800be08ba873dc22518de0b103582740cc447e0014c5cb4",
+    "frequency_count": 101,
+    "frequency_min_hz": 20.000000000000004,
+    "frequency_max_hz": 4999.999999999999,
+    "gradient_parameter_count": 29,
+    "optimization_pairs": [
+      [
+        "L0",
+        "power"
+      ],
+      [
+        "bs",
+        "reflectivity"
+      ],
+      [
+        "bs",
+        "tuning"
+      ],
+      [
+        "prm",
+        "reflectivity"
+      ],
+      [
+        "prm",
+        "tuning"
+      ],
+      [
+        "itmx",
+        "reflectivity"
+      ],
+      [
+        "itmx",
+        "tuning"
+      ],
+      [
+        "etmx",
+        "reflectivity"
+      ],
+      [
+        "etmx",
+        "tuning"
+      ],
+      [
+        "itmy",
+        "reflectivity"
+      ],
+      [
+        "itmy",
+        "tuning"
+      ],
+      [
+        "etmy",
+        "reflectivity"
+      ],
+      [
+        "etmy",
+        "tuning"
+      ],
+      [
+        "srm",
+        "reflectivity"
+      ],
+      [
+        "srm",
+        "tuning"
+      ],
+      [
+        "sq1",
+        "db"
+      ],
+      [
+        "sq1",
+        "angle"
+      ],
+      [
+        "itmxsus",
+        "mass"
+      ],
+      [
+        "etmxsus",
+        "mass"
+      ],
+      [
+        "itmysus",
+        "mass"
+      ],
+      [
+        "etmysus",
+        "mass"
+      ],
+      [
+        "L0_prm",
+        "length"
+      ],
+      [
+        "prm_bs",
+        "length"
+      ],
+      [
+        "bs_itmx",
+        "length"
+      ],
+      [
+        "itmx_etmx",
+        "length"
+      ],
+      [
+        "bs_itmy",
+        "length"
+      ],
+      [
+        "itmy_etmy",
+        "length"
+      ],
+      [
+        "bs_srm",
+        "length"
+      ],
+      [
+        "sq1_srm",
+        "length"
+      ]
+    ]
+  },
+  "workload": {
+    "objective": "mean(log10(sensitivity / public_reference))",
+    "gradient_coordinates": "physical parameter values; independent lengths",
+    "optimizer_steps": 0,
+    "forward_residuals": "saved for separately compiled reverse pass",
+    "total_scope": "imports, CPU initialization, input I/O, setup, all lowering/compilation, forward, sensitivity/powers/loss, reverse-mode gradient and host transfer",
+    "excluded": "validation and benchmark harness bookkeeping, repeated profiling, plot/report generation; interpreter launch before the first timer"
+  },
+  "environment": {
+    "cpu_model": "AMD EPYC 9334 32-Core Processor",
+    "cpu_affinity_count": 1,
+    "cpu_affinity_ids": [
+      72
+    ],
+    "requested_logical_cpus": 1,
+    "logical_cpus_on_host": 128,
+    "platform": "Linux-6.8.0-79-generic-x86_64-with-glibc2.35",
+    "python": "3.12.15",
+    "packages": {
+      "differometor": "0.0.6",
+      "jax": "0.9.0",
+      "jaxlib": "0.9.0",
+      "numpy": "2.5.5",
+      "optax": "0.2.6"
+    },
+    "backend": "cpu",
+    "jax_enable_x64": true,
+    "persistent_compilation_cache": false,
+    "omp_num_threads": "1",
+    "xla_flags": "--xla_cpu_use_fusion_emitters=false",
+    "thread_limits": {
+      "OMP_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1"
+    }
+  },
+  "phases": [
+    {
+      "key": "imports",
+      "label": "Python / library imports",
+      "category": "setup",
+      "seconds": 0.26072151586413383
+    },
+    {
+      "key": "initialize",
+      "label": "Initialize CPU backend",
+      "category": "setup",
+      "seconds": 0.0033334214240312576
+    },
+    {
+      "key": "load",
+      "label": "Read and parse public inputs",
+      "category": "setup",
+      "seconds": 0.00021052919328212738
+    },
+    {
+      "key": "build",
+      "label": "Build optical setup and prepare inputs",
+      "category": "setup",
+      "seconds": 0.03628033213317394
+    },
+    {
+      "key": "forward_lower",
+      "label": "Forward: trace / lower",
+      "category": "compile",
+      "seconds": 0.009645164012908936
+    },
+    {
+      "key": "forward_compile",
+      "label": "Forward: compile",
+      "category": "compile",
+      "seconds": 0.008380597457289696
+    },
+    {
+      "key": "forward",
+      "label": "Forward simulation + AD residuals",
+      "category": "execute",
+      "seconds": 0.007051568478345871
+    },
+    {
+      "key": "sensitivity_lower",
+      "label": "Sensitivity: trace / lower",
+      "category": "compile",
+      "seconds": 0.021795768290758133
+    },
+    {
+      "key": "sensitivity_compile",
+      "label": "Sensitivity: compile",
+      "category": "compile",
+      "seconds": 0.08965731225907803
+    },
+    {
+      "key": "sensitivity",
+      "label": "Sensitivity, powers and scalar loss",
+      "category": "execute",
+      "seconds": 0.0007294546812772751
+    },
+    {
+      "key": "gradient_lower",
+      "label": "Gradient: trace / lower",
+      "category": "compile",
+      "seconds": 0.006892329081892967
+    },
+    {
+      "key": "gradient_compile",
+      "label": "Gradient: compile",
+      "category": "compile",
+      "seconds": 0.0350433811545372
+    },
+    {
+      "key": "gradient",
+      "label": "Reverse-mode gradient",
+      "category": "execute",
+      "seconds": 0.006476074457168579
+    },
+    {
+      "key": "host_transfer",
+      "label": "Transfer results to host",
+      "category": "output",
+      "seconds": 0.00012337788939476013
+    }
+  ],
+  "repeat_samples": [
+    {
+      "forward": 0.005338812246918678,
+      "sensitivity": 0.0003976672887802124,
+      "gradient": 0.005603741854429245,
+      "host_transfer": 8.779019117355347e-05
+    },
+    {
+      "forward": 0.005756359547376633,
+      "sensitivity": 0.0004099961370229721,
+      "gradient": 0.00544162280857563,
+      "host_transfer": 7.729977369308472e-05
+    },
+    {
+      "forward": 0.005402211099863052,
+      "sensitivity": 0.0003944169729948044,
+      "gradient": 0.005474882200360298,
+      "host_transfer": 7.823854684829712e-05
+    },
+    {
+      "forward": 0.005622493103146553,
+      "sensitivity": 0.0004072953015565872,
+      "gradient": 0.00551501102745533,
+      "host_transfer": 7.862783968448639e-05
+    },
+    {
+      "forward": 0.005822058767080307,
+      "sensitivity": 0.0004070065915584564,
+      "gradient": 0.005530050024390221,
+      "host_transfer": 7.542036473751068e-05
+    },
+    {
+      "forward": 0.005408491939306259,
+      "sensitivity": 0.0003939364105463028,
+      "gradient": 0.00552872009575367,
+      "host_transfer": 7.745064795017242e-05
+    },
+    {
+      "forward": 0.005324602127075195,
+      "sensitivity": 0.0004057958722114563,
+      "gradient": 0.0054936837404966354,
+      "host_transfer": 7.860735058784485e-05
+    },
+    {
+      "forward": 0.005929747596383095,
+      "sensitivity": 0.00042706727981567383,
+      "gradient": 0.004705538973212242,
+      "host_transfer": 7.604993879795074e-05
+    },
+    {
+      "forward": 0.004722358658909798,
+      "sensitivity": 0.0004291348159313202,
+      "gradient": 0.004607580602169037,
+      "host_transfer": 7.5560063123703e-05
+    },
+    {
+      "forward": 0.004750708118081093,
+      "sensitivity": 0.0003897547721862793,
+      "gradient": 0.004376184195280075,
+      "host_transfer": 7.58189707994461e-05
+    }
+  ],
+  "timing_seconds": {
+    "end_to_end": 0.4863408263772726,
+    "trace_lower_and_compile": 0.17141455225646496,
+    "runtime_samples": [
+      0.01142801158130169,
+      0.01168527826666832,
+      0.011349748820066452,
+      0.011623427271842957,
+      0.011834535747766495,
+      0.011408599093556404,
+      0.011302689090371132,
+      0.011138403788208961,
+      0.009834634140133858,
+      0.009592466056346893
+    ],
+    "runtime_median": 0.011379173956811428,
+    "runtime_min": 0.009592466056346893,
+    "runtime_max": 0.011834535747766495,
+    "phase_runtime_medians": {
+      "forward": 0.005405351519584656,
+      "sensitivity": 0.00040640123188495636,
+      "gradient": 0.005484282970428467,
+      "host_transfer": 7.737521082162857e-05
+    }
+  },
+  "validation": {
+    "all_outputs_and_gradients_finite": true,
+    "upstream_sensitivity_check_passed": true,
+    "sensitivity_log_atol": 1e-06,
+    "max_absolute_log_sensitivity_error": 2.8819613362429664e-11,
+    "gradient_check": {
+      "parameter": "sq1.db",
+      "autodiff": -0.012906610255103756,
+      "finite_differences": [
+        {
+          "step": 0.001,
+          "central_difference": -0.012906610255669092,
+          "absolute_error": 5.653359724799856e-13
+        },
+        {
+          "step": 0.0005,
+          "central_difference": -0.0129066102549298,
+          "absolute_error": 1.7395633544747824e-13
+        }
+      ],
+      "rtol": 0.01,
+      "atol": 1e-06,
+      "passed": true
+    },
+    "gradient_shape": [
+      29
+    ],
+    "gradient_norm": 45750.22238103168,
+    "loss": 4.286110963697793e-12,
+    "output_shapes": {
+      "carrier": [
+        36,
+        1
+      ],
+      "signal": [
+        82,
+        101
+      ],
+      "noise": [
+        101
+      ]
+    },
+    "output_dtypes": {
+      "carrier": "complex128",
+      "signal": "complex128",
+      "noise": "float64"
+    }
+  }
+}
