@@ -1,6 +1,7 @@
 % Pitch deck for the Feyer "Faster Physics" challenge, START Hack Munich 2026.
 % Build: cd docs/pitch && pdflatex pitch.tex && pdflatex pitch.tex
-% Every number comes from results/amd-epyc-final/comparison.txt (AMD EPYC 9334, 1 CPU, one session).
+% Development-benchmark numbers: results/amd-epyc-final/comparison.txt (AMD EPYC 9334, 1 CPU, one session).
+% aLIGO, suite and validation numbers: results/final-validation/, results/epyc-c8066b8/, FEYER_FINAL_VALIDATION.md.
 \documentclass[aspectratio=169,11pt]{beamer}
 
 \usepackage[utf8]{inputenc}
@@ -12,7 +13,7 @@
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,positioning}
 
-\graphicspath{{../report/figures/}}
+\graphicspath{{../report/figures/}{../../results/epyc-c8066b8/}}
 
 % ---------------------------------------------------------------- look
 \definecolor{accent}{HTML}{C0262D}   % red accent
@@ -44,7 +45,7 @@
 \newcommand{\team}{Team name}
 
 \title{Differometor, 60$\times$ faster}
-\subtitle{Same physics, same gradients: 35.3\,s $\to$ 0.585\,s for the complete first run}
+\subtitle{Same physics, same gradients, any optical setup}
 \author{\team}
 \institute{START Hack Munich 2026 $\cdot$ Feyer: Faster Physics}
 \date{22 November 2026}
@@ -72,18 +73,18 @@
       \hl{190$\times$} \;{\color{muted}from 15.48\,s}
     \end{column}
     \begin{column}{0.32\textwidth}\centering
-      {\color{muted}XLA compilation}\\[0.3em]
-      \bignum{0.17\,s}\\[0.2em]
-      \hl{112$\times$} \;{\color{muted}from 19.23\,s}
+      {\color{muted}new aLIGO setup, first run}\\[0.3em]
+      \bignum{0.490\,s}\\[0.2em]
+      \hl{42$\times$} \;{\color{muted}from 20.78\,s}
     \end{column}
   \end{columns}
-  \vspace{1.6em}
-  \begin{itemize}
-    \item All 101 frequencies, all 193 design variables, \texttt{float64}/\texttt{complex128}, no precomputation.
-    \item \ok{21 of 21 runs PASS.} $\max|\Delta\log S| = 5.374\times10^{-6}$: the same error as the unmodified code.
-    \item One session, one pinned core of an AMD EPYC 9334: baseline and every variant side by side.
+  \vspace{1.0em}
+  \begin{itemize}\small
+    \item Grid: all 101 frequencies, all 193 design variables, \texttt{float64}, no precomputation. \ok{21 of 21 runs PASS}, $\max|\Delta\log S| = 5.374\times10^{-6}$, the same as the unmodified code.
+    \item \ok{aLIGO PASS} on the official second benchmark; all 29 gradients match the official code to $10^{-10}$.
+    \item One pinned core of an AMD EPYC 9334, original and ours on the same machine.
   \end{itemize}
-  \src{results/amd-epyc-final/comparison.txt (median of 3 runs; spread $<2\%$)}
+  \src{results/amd-epyc-final/comparison.txt (median of 3 runs); results/final-validation/}
 \end{frame}
 
 % ================================================================= 3
@@ -180,7 +181,7 @@
 % ================================================================= 7
 \begin{frame}{Idea 4: our own sparse LU in C++}
   \begin{itemize}
-    \item Gilbert--Peierls left-looking LU (CSparse/KLU style), loaded with \texttt{ctypes}, compiled at \texttt{pip install}.
+    \item Gilbert--Peierls left-looking LU (CSparse/KLU style), loaded with \texttt{ctypes}, \hl{shipped prebuilt}: no compiler, no build step.
     \item Minimum-degree ordering on $A+A^T$, computed once per sparsity pattern.
     \item \hl{KLU-style pivot reuse}: frequency 0 is pivoted; the other 100 reuse its pivot order whenever every pivot stays $\ge 0.1\times$ the column maximum. On the benchmark, all 100 reuse it.
     \item One step of iterative refinement on every solve; a singular frequency gives \texttt{NaN} only for itself.
@@ -205,11 +206,11 @@
       \end{itemize}
     \end{column}
     \begin{column}{0.5\textwidth}
-      \textbf{E12: CPU-tuned solver, same rounding}
+      \textbf{E12/E13: CPU-tuned and prebuilt}
       \begin{itemize}
-        \item \texttt{-march=native} for wider SIMD\ldots
-        \item \ldots with \texttt{-ffp-contract=off}: no fused multiply-add, so every operation rounds as before.
-        \item Factorisation $-17\,\%$; \ok{bit-identical} on 12 topologies.
+        \item Baseline, AVX2, AVX-512 builds ship in the package; CPU flags pick one.
+        \item No fused multiply-add: every level \ok{bit-identical}.
+        \item \texttt{pip install} compiles nothing.
       \end{itemize}
     \end{column}
   \end{columns}
@@ -227,15 +228,26 @@
 \end{frame}
 
 % ================================================================= 10
+\begin{frame}{Built for any optical setup, not for one benchmark}
+  \vspace{-0.6em}
+  \centering
+  \includegraphics[width=\linewidth,height=0.62\textheight,keepaspectratio]{suite_original_vs_final.png}\par
+  \raggedright\small
+  Final scoring uses \hl{a different setup}. \textbf{aLIGO}, the official second benchmark: 20.78\,s $\to$ \textbf{0.490\,s}, \ok{PASS}, error $2.9\times10^{-11}$ (limit $10^{-6}$).
+  Ten more setups: \hl{45$\times$} geometric mean, every one matching the original. Sparsity patterns, orderings and pivots all come from the setup itself.
+  \src{results/epyc-c8066b8/suite/comparison.txt, results/final-validation/}
+\end{frame}
+
+% ================================================================= 11
 \begin{frame}{Correct, and in places more accurate than the original}
   \begin{columns}[T]
     \begin{column}{0.5\textwidth}
-      \textbf{Benchmark checks (all 21 runs)}
-      \begin{itemize}
-        \item $\max|\Delta\log S| = 5.374\times10^{-6}$ (bar $10^{-5}$); identical to the unmodified code.
-        \item Gradient vs.\ baseline: cosine \textbf{1.0000000000}, relative error $8.6\times10^{-8}$.
-        \item Finite-difference check: error $4.3\times10^{-9}$, against $7.0\times10^{-8}$ for the original code.
-        \item Also checked on aLIGO, Voyager, UIFO and random topologies.
+      \textbf{Checks}
+      \begin{itemize}\small
+        \item $\max|\Delta\log S| = 5.374\times10^{-6}$ (limit $10^{-5}$), the same as the unmodified code.
+        \item Gradient cosine \textbf{1.0000000000}; finite-difference error $4.3\times10^{-9}$ vs $7.0\times10^{-8}$ for the original.
+        \item Every output array and gradient match the official code: $10^{-10}$ on aLIGO, $10^{-7}$ on the grid.
+        \item Instrumented runs: \hl{every solve on our C++ solver}, no fallback.
       \end{itemize}
     \end{column}
     \begin{column}{0.48\textwidth}
@@ -252,10 +264,10 @@
       {\small Sparse LU with iterative refinement beats dense LAPACK on ill-conditioned setups ($\kappa \sim 10^{31}$).}
     \end{column}
   \end{columns}
-  \src{results/amd-epyc-final/, results/generality-e9.jsonl, tests/}
+  \src{results/amd-epyc-final/, results/final-validation/, FEYER\_FINAL\_VALIDATION.md, results/generality-e9.jsonl}
 \end{frame}
 
-% ================================================================= 11
+% ================================================================= 12
 \begin{frame}{What we learned}
   \begin{itemize}
     \item \hl{Compile time was the real enemy}, not FLOPs: 19\,s of 35\,s. The fastest code is the code XLA never sees.
@@ -267,21 +279,21 @@
   \textbf{What is left:} \texttt{import jax} alone is 0.26\,s of our 0.585\,s. Next: vectorise the LU across frequencies (same pivot order $\Rightarrow$ SIMD over 101 systems, still bit-identical).
 \end{frame}
 
-% ================================================================= 12
+% ================================================================= 13
 \begin{frame}[fragile]{Reproduce it}
 \begin{verbatim}
-pip install -r requirements.txt && pip install -e .
-python benchmark.py --cpus 1 --output final.json   # prints PASS
-DIFFEROMETOR_XLA_FLAGS=fast python benchmark.py --cpus 1
+pip install -r requirements.txt && pip install -e .   # compiles nothing
+python benchmark.py --cpus 1 --output final.json       # PASS, 0.585 s
+python benchmark_aligo.py --cpus 1                     # PASS, 0.490 s
 \end{verbatim}
   \vspace{0.4em}
   \begin{itemize}
-    \item Fallbacks: \texttt{DIFFEROMETOR\_NATIVE=0} (SciPy SuperLU), \texttt{DIFFEROMETOR\_BACKEND=jax} (in-graph JAX).
-    \item Write-ups: \texttt{OPTIMIZATION\_LOG.md}, \texttt{docs/report/main.pdf}, \texttt{docs/notes/}.
+    \item Fallbacks: \texttt{DIFFEROMETOR\_NATIVE=0} (SciPy SuperLU), \texttt{DIFFEROMETOR\_BACKEND=jax} (in-graph JAX). Opt-in \texttt{DIFFEROMETOR\_XLA\_FLAGS=fast}: 0.509\,s.
+    \item Write-ups: \texttt{OPTIMIZATION\_LOG.md}, \texttt{FEYER\_FINAL\_VALIDATION.md}, \texttt{docs/report/main.pdf}.
   \end{itemize}
   \vspace{1.2em}
   \centering
-  {\Large\bfseries 35.28\,s $\;\longrightarrow\;$ \textcolor{accent}{0.585\,s}}\par\vspace{0.3em}
+  {\Large\bfseries 35.28\,s $\;\longrightarrow\;$ \textcolor{accent}{0.585\,s} \quad {\normalsize\color{muted}aLIGO} 20.78\,s $\;\longrightarrow\;$ \textcolor{accent}{0.490\,s}}\par\vspace{0.3em}
   {\color{muted}Thank you. Questions?}\par
 \end{frame}
 

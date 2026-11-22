@@ -1,7 +1,7 @@
 # 3-minute pitch script — Feyer: Faster Physics
 
-Timing: 354 spoken words ≈ 2:37 at ~135 words per minute, plus ~6 s for the demo run and ~10 s to
-switch to the terminal and back ≈ 2:55 in total.
+Timing: 357 spoken words ≈ 2:39 at ~135 words per minute, plus ~6 s for the demo run and ~10 s
+to switch to the terminal and back ≈ 2:55 in total.
 **Bold** marks the words to stress; *[cues]* are actions, not spoken. Slide numbers refer to
 `pitch.pdf`.
 
@@ -9,8 +9,8 @@ switch to the terminal and back ≈ 2:55 in total.
 |---|---|---|
 | Problem | 0:00 – 0:30 | 1 → 3 |
 | Solution | 0:30 – 1:45 | 4 → 8 |
-| Demo | 1:45 – 2:30 | terminal, then 9 |
-| What's next | 2:30 – 3:00 | 10 → 12 |
+| Demo | 1:45 – 2:25 | terminal, then 9 |
+| Any setup, what's next | 2:25 – 3:00 | 10 → 13 |
 
 ---
 
@@ -50,15 +50,15 @@ JAX's own derivative program, so the gradients are JAX's.
 
 *[Slide 7]*
 
-The solver is our own C++ sparse LU. The pivot order from the first frequency is reused for the
-other hundred.
+The solver is our own C++ sparse LU, shipped prebuilt, so nothing compiles at install. The pivot
+order from the first frequency is reused for the other hundred.
 
 *[Slide 8]*
 
 And the last 70 milliseconds came from XLA compiler flags and a CPU-tuned build. They are
 **bit-identical**: not one output bit changes.
 
-## 1:45 – 2:30 · Demo  *(≈ 85 words; the run takes ~6 s)*
+## 1:45 – 2:25 · Demo  *(≈ 80 words; the run takes ~6 s)*
 
 *[Switch to terminal. Run:]* `DEMO_SSH="ssh -p <port> root@<host>" ./docs/pitch/demo.sh`
 
@@ -73,24 +73,24 @@ core. It includes everything: imports, compilation, forward pass, sensitivity an
 *[Slide 9]*
 
 Same machine, one session, every version side by side: 35 seconds down to 0.585. **Sixty times
-faster**, and with the opt-in fast mode, 69 times.
+faster.**
 
-## 2:30 – 3:00 · What's next  *(≈ 70 words)*
+## 2:25 – 3:00 · Any setup, what's next  *(≈ 80 words)*
 
 *[Slide 10]*
 
-The log-sensitivity error is identical to the original, and on ill-conditioned detectors we are
-actually **more accurate** than the dense code.
+And the final scoring uses a **different** setup, so we built nothing for this one. On the official
+aLIGO benchmark: **21 seconds to under half a second**, PASS. Ten more detectors, 45 times faster on
+average.
 
 *[Slide 11]*
 
-What's next: half of our remaining time is just `import jax`. On the compute side, all 101
-frequencies share one pivot order, so we can vectorise the LU **across frequencies**, still
-bit-identical.
+Every output and every gradient matches the official code, and on ill-conditioned detectors we
+are **more accurate** than the dense code.
 
-*[Slide 12]*
+*[Slide 12 → 13]*
 
-Same physics. Same gradients. **Thirty-five seconds to half a second.** Thank you.
+What's left is mostly `import jax`. Same physics. Same gradients. **Any detector.** Thank you.
 
 ---
 
@@ -114,6 +114,8 @@ And look at the loss curves: they lie on top of each other. Same physics, same d
   0.585 is from the EPYC."*
 - **Anything else:** skip to slide 9 and say: *"Here is the recorded run from that machine:
   21 runs, all PASS."* That loses no time.
+- **If asked to show the new setup live:** `DEMO_SETUP=aligo DEMO_SSH=... ./docs/pitch/demo.sh`
+  runs the official `benchmark_aligo.py` (about 0.49 s first run, PASS).
 - **Before going on stage:** run the demo once (it warms the disk cache; the measured number
   doesn't change) and keep the terminal open at the right folder with a large font.
 
@@ -121,10 +123,17 @@ And look at the loss curves: they lie on top of each other. Same physics, same d
 
 - **Is it still correct?** All 21 runs PASS, the error is 5.374e-6 (the same as the original),
   the gradient cosine is 1.0000000000, and the finite-difference error is 4.3e-9 vs 7.0e-8 for the
-  original.
-- **Is it specific to this setup?** No: the identity is exact for any topology, and we checked
-  aLIGO, Voyager, UIFO and random topologies against the JAX path. A custom component falls back to
-  traced JAX automatically.
+  original. An independent validation against the official code matched every output array and all
+  gradients: 1e-10 on aLIGO, 1e-7 on the grid (`FEYER_FINAL_VALIDATION.md`).
+- **Is it specific to this setup?** No. The official aLIGO benchmark passes at 0.490 s (from
+  20.78 s), and a 10-setup suite (aLIGO, Voyager, uIFO, 5–301 frequencies) is 45× faster on average,
+  every case matching the original. Sparsity patterns, orderings and pivots come from the setup. A
+  custom component falls back to traced JAX automatically.
+- **Do the judges need a C++ compiler?** No. The solver ships prebuilt for Linux x86-64 (baseline,
+  AVX2, AVX-512, chosen from the CPU flags), so `pip install` compiles nothing. With no usable
+  library it falls back to SciPy and still passes.
+- **Is the C++ solver really used, or does it silently fall back?** We instrumented the official
+  scripts: every solve ran on the C++ solver, with zero SciPy or JAX fallback.
 - **What do you lose?** Forward-mode AD on the fast path. `DIFFEROMETOR_BACKEND=jax` keeps the full
   JAX path.
 - **Are the compiler flags a trick?** They are set by the package, recorded in the benchmark's own
